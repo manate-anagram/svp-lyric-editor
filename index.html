@@ -428,7 +428,8 @@ function drawMain() {
 /* ==================== playing-note lookup (shared by draw & lyric strip) ==================== */
 function playingBlick() {
   if (!playing) return null;
-  return blickAtElapsed((AC ? AC.currentTime : 0) - sched.startTime) + sched.startBlick;
+  // blickAtElapsed は startBlick 起点の絶対位置を返す（startBlick を足してはいけない＝二重加算）
+  return blickAtElapsed((AC ? AC.currentTime : 0) - sched.startTime);
 }
 
 /* ==================== minimap (overview) ==================== */
@@ -1039,11 +1040,14 @@ cv.addEventListener("mousemove", e => {
       n.pitch = np;
     }
   } else if (drag.mode === "resizeL") {
-    const newOnset = Math.min(drag.origOnset + drag.origDur - QUARTER/16, Math.max(0, snapBlick(b)));
+    // 行内相対で計算（blickOffset を加算しない: n.onset は行内相対）
+    const relB = b - drag.row.blickOffset;
+    const newOnset = Math.min(drag.origOnset + drag.origDur - QUARTER/16, Math.max(0, snapBlick(relB)));
     n.duration = drag.origDur + (drag.origOnset - newOnset);
     n.onset = newOnset;
   } else { // resizeR
-    const end = Math.max(drag.origOnset + QUARTER/16, snapBlick(b));
+    const relB = b - drag.row.blickOffset;
+    const end = Math.max(drag.origOnset + QUARTER/16, snapBlick(relB));
     n.duration = end - drag.origOnset;
   }
   drag.moved = true; dirty = true; draw();
