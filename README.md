@@ -34,17 +34,6 @@ No build step, no server, fully offline — **your files never leave your browse
 動作確認済みブラウザ: Chrome (Chromium ベース)・Edge・Firefox・Safari (localStorage / AudioContext 必須)
 ```
 
-## Screenshots / スクリーンショット
-
-| 画面 | 画像 |
-|------|------|
-| メイン(ピアノロール+全体ビュー+歌詞ストリップ) | ![main](docs/screenshot.png) |
-| トラックパネル | ![trackpane](docs/screenshot-trackpane.png) |
-| 複数トラック表示 | ![multitrack](docs/screenshot-multitrack.png) |
-| 歌詞まとめ入力 | ![batch](docs/screenshot-batch.png) |
-| エディタ表示 | ![editor](docs/screenshot-editor.png) |
-| リサイズ対応 | ![resizable](docs/screenshot-resizable.png) |
-
 ## Key bindings / 操作早見表
 
 | 操作 | キー / マウス |
@@ -82,7 +71,7 @@ svp-lyric-editor/
 ├── LICENSE
 └── docs/
     ├── phoneme-japanese-romaji.json   # Synthesizer V公式ローマ字音素表 (JapaneseROMAJI)
-    └── screenshot*.png                # スクリーンショット
+    └── screenshot.png                 # スクリーンショット
 ```
 
 ## Implementation notes / 実装メモ
