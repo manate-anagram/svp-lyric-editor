@@ -260,16 +260,18 @@ function parseProject(json, name, opts = {}) {
   endBlick = Math.ceil((maxEnd + QUARTER*4) / (QUARTER*4)) * QUARTER*4;
   // default bpm input
   ui.bpmInput.value = tempoMarks()[0].bpm;
-  // fit view
-  const w = cv.clientWidth - KEYS_W;
-  const quarters = endBlick / QUARTER;
-  pxPerQuarter = Math.max(24, Math.min(220, w / quarters));
-  // fit pitch
-  let lo=127, hi=0;
-  for (const r of rows) for (const n of r.notes) { lo=Math.min(lo,n.pitch+r.pitchOffset); hi=Math.max(hi,n.pitch+r.pitchOffset); }
-  scrollP = lo - 4; // bottom pitch
-  zoomY = Math.max(0.6, Math.min(2, cv.clientHeight / Math.max(1,(hi-lo+12)) / ROW_H));
-  sel = null; selSet = new Set(); playhead = 0;
+  // fit view (skip when keepView: undo/redoで表示位置を維持する)
+  if (!opts.keepView) {
+    const w = cv.clientWidth - KEYS_W;
+    const quarters = endBlick / QUARTER;
+    pxPerQuarter = Math.max(24, Math.min(220, w / quarters));
+    // fit pitch
+    let lo=127, hi=0;
+    for (const r of rows) for (const n of r.notes) { lo=Math.min(lo,n.pitch+r.pitchOffset); hi=Math.max(hi,n.pitch+r.pitchOffset); }
+    scrollP = lo - 4; // bottom pitch
+    zoomY = Math.max(0.6, Math.min(2, cv.clientHeight / Math.max(1,(hi-lo+12)) / ROW_H));
+    sel = null; selSet = new Set(); playhead = 0;
+  }
   if (!opts.keepHistory) { undoStack = []; redoStack = []; }
   dirty = false;
   ui.saveBtn.disabled = ui.playBtn.disabled = ui.stopBtn.disabled = false;
@@ -602,6 +604,7 @@ cvLyric.addEventListener("mousedown", e => {
     draw();
   } else {
     playhead = Math.max(0, h.b);
+    lastStartBlick = playhead;   // 明示シークは再生開始位置を更新
     if (playing) restartPlayback();
     draw();
   }
@@ -914,8 +917,11 @@ function restoreFrom(restored) {
   project = restored;
   // re-run the same (track, reference) row-building as parseProject, keeping hues by holder uuid order
   const saved = rows;
-  const ok = parseProject(project, fileName, { keepHistory: true }); // undo/redo中は履歴を消さない
+  // ビュー状態を退避（undo/redoで表示位置・ズームが飛ばないようにする）
+  const v = { scrollT, scrollP, zoomY, pxPerQuarter, playhead };
+  const ok = parseProject(project, fileName, { keepHistory: true, keepView: true }); // undo/redo中は履歴を消さない
   if (!ok) { setStatus("undo/redo後の再パースに失敗"); return; }
+  scrollT = v.scrollT; scrollP = v.scrollP; zoomY = v.zoomY; pxPerQuarter = v.pxPerQuarter; playhead = v.playhead;
   const byUuid = new Map();
   for (const o of saved) { const k = o.uuid; if (!byUuid.has(k)) byUuid.set(k, []); byUuid.get(k).push(o); }
   for (const r of rows) {
@@ -965,6 +971,7 @@ cv.addEventListener("mousedown", e => {
   const px = e.clientX - rect.left, py = e.clientY - rect.top;
   if (py < RULER_H && px > KEYS_W) { // seek
     playhead = Math.max(0, scrollT + px2blick(px - KEYS_W));
+    lastStartBlick = playhead;   // 明示シークは再生開始位置を更新
     if (playing) restartPlayback();
     draw(); return;
   }
@@ -1102,7 +1109,8 @@ cv.addEventListener("wheel", e => {
     scrollT = Math.max(0, bAt - px2blick(px - KEYS_W));
   } else if (e.shiftKey) {
     // Shift+ホイール: 縦スクロール（音程・拡大時の上下移動）
-    scrollP += Math.sign(e.deltaX !== 0 ? e.deltaX : e.deltaY) * 2;
+    // 上スクロール(deltaY<0)で上(高音域)へ: scrollP(画面下辺pitch)を増やす
+    scrollP -= Math.sign(e.deltaX !== 0 ? e.deltaX : e.deltaY) * 2;
   } else {
     // ホイール: 横スクロール（トラックパッドのdeltaXも考慮）
     const dx = e.deltaX !== 0 ? e.deltaX : e.deltaY;
@@ -1293,7 +1301,7 @@ setInterval(scheduleAutosave, 2000);
 function loadAutosave() {
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (!raw) return;
+    if (!raw) return false;
     const o = JSON.parse(raw);
     const ts = new Date(o.at).toLocaleString("ja-JP");
     if (confirm(`前回の作業中ファイルがあります。\n${o.name}（${ts} 時点の自動保存）\n復元しますか？\n\n「キャンセル」で新規読込から開始`)) {
@@ -1303,11 +1311,13 @@ function loadAutosave() {
         activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
         renderTrackPane();
         setStatus(`自動保存から復元: ${o.name}`);
+        return true;   // 復元した
       }
     } else {
       localStorage.removeItem(AUTOSAVE_KEY);
     }
   } catch (e) { console.warn("autosave restore failed", e); }
+  return false;   // 復元しなかった（新規読込OK）
 }
 // clear autosave after explicit save
 const _saveClick = ui.saveBtn.onclick;
@@ -1468,8 +1478,7 @@ function blickAtElapsed(elapsed) {
 function startPlayback() {
   if (playing) return;
   const ac = audioCtx(); if (ac.state === "suspended") ac.resume();
-  // stopMode==="return" なら停止位置からではなく「前回の再生開始位置」から再スタート
-  if (stopMode === "return" && lastStartBlick !== null) playhead = lastStartBlick;
+  // playhead は現在のヘッド位置を尊重（■停止時の stopMode 処理で決定済み）
   lastStartBlick = playhead;
   sched = { notes: collectPlayNotes(playhead), idx: 0, startTime: ac.currentTime + 0.05, startBlick: playhead, live: [], timer: null };
   playing = true;
@@ -1503,7 +1512,16 @@ function togglePlay() {
   }
 }
 ui.playBtn.onclick = () => { if (!_toggleLock) togglePlay(); };
-ui.stopBtn.onclick = () => { stopPlayback(); };  // ■: 一時停止（その場で止まる）
+ui.stopBtn.onclick = () => {
+  stopPlayback();
+  // ■: 停止後、stopMode に応じてヘッド位置を決める
+  if (stopMode === "return") {
+    // 「再生位置に戻る」: 停止時にヘッドを再生開始位置へ戻す（次回再生はここから）
+    if (lastStartBlick !== null) playhead = lastStartBlick;
+    else playhead = 0;
+    draw();
+  }
+};  // ■: stopMode stay=その場で停止 / return=再生開始位置に戻る
 
 /* ==================== file io ==================== */
 function readFile(file) {
@@ -1604,11 +1622,11 @@ document.getElementById("paneResize").addEventListener("dblclick", () => paneTog
 /* ==================== boot ==================== */
 resize();
 loadPrefs();
-loadAutosave();
+// demo mode: when opened with ?demo, fetch & load a bundled sample project.
+// 自動保存データがある場合(復元した場合)はデモよりユーザーの作業を優先する
+const restored = loadAutosave();
 
-// demo mode: when opened with ?demo, fetch & load a bundled sample project
-// (local/offline use stays as-is — normal users load their own .svp via D&D)
-if (location.search.includes("demo")) {
+if (!restored && location.search.includes("demo")) {
   fetch("demo.svp").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
     .then(txt => {
       const f = new File([txt], "demo.svp", { type: "application/json" });
