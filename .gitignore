@@ -1,0 +1,14 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local test data (never commit real .svp files)
+testdata/
+*.svp
+!examples/**/*.svp
+
+# Node
+node_modules/

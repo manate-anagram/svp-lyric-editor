@@ -1,0 +1,208 @@
+{
+  "group_name": {
+    "key": "JapaneseROMAJI",
+    "en": "Japanese - ROMAJI",
+    "zh": "日文 - 罗马字",
+    "jp": "日本語 - ローマ字"
+  },
+  "sections": [
+    {
+      "section_name": {
+        "en": "Vowels and Semivowels",
+        "zh": "元音、半元音",
+        "jp": "母音、半母音"
+      },
+      "section_items": [
+        {
+          "phoneme": "a",
+          "category": "vowel",
+          "example": "あ _a_"
+        },
+        {
+          "phoneme": "i",
+          "category": "vowel",
+          "example": "い _i_"
+        },
+        {
+          "phoneme": "u",
+          "category": "vowel",
+          "example": "う _u_"
+        },
+        {
+          "phoneme": "e",
+          "category": "vowel",
+          "example": "え _e_"
+        },
+        {
+          "phoneme": "o",
+          "category": "vowel",
+          "example": "お _o_"
+        },
+        {
+          "phoneme": "N",
+          "category": "vowel",
+          "example": "ん _n_"
+        },
+        {
+          "phoneme": "w",
+          "category": "semivowel",
+          "example": "わ _w_a"
+        },
+        {
+          "phoneme": "v",
+          "category": "semivowel",
+          "example": "ヴァ _v_a"
+        },
+        {
+          "phoneme": "y",
+          "category": "semivowel",
+          "example": "や _y_a"
+        }
+      ]
+    },
+    {
+      "section_name": {
+        "en": "Consonants",
+        "zh": "辅音",
+        "jp": "子音"
+      },
+      "section_items": [
+        {
+          "phoneme": "t",
+          "category": "stop",
+          "example": "た _t_a"
+        },
+        {
+          "phoneme": "d",
+          "category": "stop",
+          "example": "だ _d_a"
+        },
+        {
+          "phoneme": "s",
+          "category": "fricative",
+          "example": "さ _s_a"
+        },
+        {
+          "phoneme": "sh",
+          "category": "fricative",
+          "example": "しゃ _sh_a"
+        },
+        {
+          "phoneme": "j",
+          "category": "affricate",
+          "example": "じゃ _j_a"
+        },
+        {
+          "phoneme": "z",
+          "category": "affricate",
+          "example": "ざ _z_a"
+        },
+        {
+          "phoneme": "ts",
+          "category": "affricate",
+          "example": "つ _ts_u"
+        },
+        {
+          "phoneme": "k",
+          "category": "stop",
+          "example": "か _k_a"
+        },
+        {
+          "phoneme": "g",
+          "category": "stop",
+          "example": "が _g_a"
+        },
+        {
+          "phoneme": "h",
+          "category": "aspirate",
+          "example": "ハ _h_a"
+        },
+        {
+          "phoneme": "b",
+          "category": "stop",
+          "example": "ば _b_a"
+        },
+        {
+          "phoneme": "p",
+          "category": "stop",
+          "example": "ぱ _p_a"
+        },
+        {
+          "phoneme": "f",
+          "category": "fricative",
+          "example": "ふぁ _f_a"
+        },
+        {
+          "phoneme": "ch",
+          "category": "affricate",
+          "example": "ちゃ _ch_a"
+        },
+        {
+          "phoneme": "ry",
+          "category": "liquid",
+          "example": "りゃ _ry_a"
+        },
+        {
+          "phoneme": "ky",
+          "category": "stop",
+          "example": "きゃ _ky_a"
+        },
+        {
+          "phoneme": "py",
+          "category": "stop",
+          "example": "ぴゃ _py_a"
+        },
+        {
+          "phoneme": "dy",
+          "category": "stop",
+          "example": "でゃ _dy_a"
+        },
+        {
+          "phoneme": "ty",
+          "category": "stop",
+          "example": "てゃ _ty_a"
+        },
+        {
+          "phoneme": "ny",
+          "category": "nasal",
+          "example": "にゃ _ny_a"
+        },
+        {
+          "phoneme": "hy",
+          "category": "aspirate",
+          "example": "ひゃ _hy_a"
+        },
+        {
+          "phoneme": "my",
+          "category": "nasal",
+          "example": "みゃ _my_a"
+        },
+        {
+          "phoneme": "gy",
+          "category": "stop",
+          "example": "ぎゃ _gy_a"
+        },
+        {
+          "phoneme": "by",
+          "category": "stop",
+          "example": "びゃ _by_a"
+        },
+        {
+          "phoneme": "n",
+          "category": "nasal",
+          "example": "な _n_a"
+        },
+        {
+          "phoneme": "m",
+          "category": "nasal",
+          "example": "ま _m_a"
+        },
+        {
+          "phoneme": "r",
+          "category": "liquid",
+          "example": "ら _r_a/_l_a"
+        }
+      ]
+    }
+  ]
+}

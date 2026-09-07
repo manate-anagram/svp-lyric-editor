@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>svp-viewer — Synthesizer V project piano roll</title>
+<style>
+  :root {
+    --bg: #14161b; --panel: #1d2027; --panel2: #23262f; --text: #dde1e8;
+    --accent: #4f8cff; --grid: #2a2e38; --grid-beat: #383d4a; --grid-bar: #4a5060;
+    --black-key: #171920; --key-row: #1a1d24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 13px; }
+  #toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel);
+    border-bottom: 1px solid #000; flex-wrap: wrap; user-select: none; }
+  #toolbar button, #toolbar input, #toolbar select {
+    background: var(--panel2); color: var(--text); border: 1px solid #3a3f4c; border-radius: 5px;
+    padding: 4px 10px; font-size: 13px; outline: none; }
+  #toolbar button { cursor: pointer; } #toolbar button:hover { background: #2e323d; }
+  #toolbar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #toolbar .sep { width: 1px; height: 20px; background: #3a3f4c; }
+  #toolbar label { color: #9aa1ad; }
+  #bpmInput { width: 64px; }
+  #status { margin-left: auto; color: #9aa1ad; }
+  #drop-overlay { position: fixed; inset: 0; background: rgba(79,140,255,.15); border: 3px dashed var(--accent);
+    display: none; align-items: center; justify-content: center; font-size: 22px; z-index: 99; pointer-events: none; }
+  #stage { position: relative; height: calc(100% - 38px); display: flex; }
+  #trackPane { width: 180px; min-width: 140px; background: var(--panel); border-right: 1px solid #000;
+    overflow-y: auto; user-select: none; padding: 6px 4px; }
+  #paneResize { width: 5px; flex: none; cursor: col-resize; background: transparent; transition: background .15s; }
+  #paneResize:hover, #paneResize.active { background: var(--accent); }
+  #trackPane.collapsed { display: none; }
+  #paneToggle { flex: none; align-self: stretch; width: 14px; cursor: pointer; background: var(--panel);
+    border: none; border-right: 1px solid #000; color: #6a7280; font-size: 10px; padding: 0; }
+  #paneToggle:hover { color: var(--accent); }
+  #trackPane h3 { font-size: 11px; color: #9aa1ad; padding: 2px 6px 6px; font-weight: normal; }
+  .trackItem { display: flex; align-items: center; gap: 6px; padding: 5px 8px; margin: 2px 2px;
+    border-radius: 6px; cursor: pointer; color: #aab2bf; font-size: 12px; }
+  .trackItem:hover { background: #262a34; }
+  .trackItem.active { background: #2e3547; color: #fff; }
+  .trackItem .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .trackItem .cnt { margin-left: auto; color: #6a7280; font-size: 10px; }
+  .trackItem .sub { display: block; font-size: 10px; color: #6a7280; }
+  #rollWrap { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #miniWrap { position: relative; height: 46px; flex: none; background: var(--panel); border-bottom: 1px solid #000; cursor: default; }
+  #vResize1, #vResize2 { height: 5px; flex: none; cursor: row-resize; background: transparent; transition: background .15s; }
+  #vResize1:hover, #vResize2:hover, #vResize1.active, #vResize2.active { background: var(--accent); }
+  #cvWrap { position: relative; flex: 1; min-height: 0; }
+  #lyricWrap { position: relative; height: 64px; flex: none; background: var(--panel); border-top: 1px solid #000; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hint { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center;
+    justify-content: center; color: #9aa1ad; text-align: center; z-index: 5; }
+  #hint .big { font-size: 40px; } #hint code { background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+  #noteEditor { position: absolute; display: none; z-index: 20; background: var(--panel2);
+    border: 1px solid var(--accent); border-radius: 6px; padding: 6px 8px;
+    flex-direction: column; gap: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+  #noteEditor label { color: #9aa1ad; font-size: 10px; display: flex; gap: 4px; align-items: center; }
+  #noteEditor input, #noteEditor textarea { background: #14161b; border: 1px solid #3a3f4c; color: var(--text);
+    border-radius: 4px; padding: 2px 6px; font-size: 12px; width: 160px; outline: none;
+    font-family: inherit; resize: vertical; }
+  #noteEditor input:focus, #noteEditor textarea:focus { border-color: var(--accent); }
+  #noteEditor .edHint { font-size: 9px; color: #6a7280; }
+  #edPhonAuto { margin-left: auto; background: none; border: none; color: #6a7280; font-size: 9px;
+    cursor: pointer; padding: 0; }
+  #edPhonAuto:hover { color: var(--accent); }
+  /* 歌詞テキストエリア: 長文入力時に行を増やして広く使える */
+  #rowLyric textarea { min-height: 20px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <button id="openBtn">📁 開く</button>
+  <button id="saveBtn" class="primary" disabled>💾 svp書き出し</button>
+  <div class="sep"></div>
+  <button id="playBtn" disabled>▶</button>
+  <button id="stopBtn" disabled>■</button>
+  <label>BPM <input id="bpmInput" type="number" step="1" min="20" max="400" disabled></label>
+  <label>スナップ
+    <select id="snapSel">
+      <option value="88200000">1/16</option>
+      <option value="176400000" selected>1/8</option>
+      <option value="117600000">1/8三連</option>
+      <option value="352800000">1/4</option>
+      <option value="235200000">1/4三連</option>
+      <option value="705600000">1/1</option>
+      <option value="0">オフ</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <button id="phonBtn" disabled title="ノート表示を歌詞⇔音素で切替">表示: 歌詞</button>
+  <button id="metroBtn" disabled title="メトロノーム切り替え">🥢 メトロノーム: OFF</button>
+  <button id="followBtn" disabled title="再生位置にピアノロール/歌詞ストリップを追従させる (F)">追従: ON</button>
+  <button id="stopModeBtn" disabled title="停止後の再開位置: その場から / 前回の再生開始位置から">■停止: その場で停止</button>
+  <span id="status">未読込</span>
+  <span id="autosaveTip" style="display:none;color:#6a7280;font-size:10px;" title="編集内容を自動でブラウザに保存しています">・自動保存中</span>
+  <input type="file" id="fileInput" accept=".svp" style="display:none">
+</div>
+<div id="stage">
+  <div id="trackPane"><h3>TRACKS</h3><div id="trackList"></div></div>
+  <div id="paneResize"></div>
+  <div id="rollWrap">
+    <div id="miniWrap"><canvas id="cvMini"></canvas></div>
+    <div id="vResize1"></div>
+    <div id="cvWrap">
+      <canvas id="cv"></canvas>
+      <div id="hint">
+        <div class="big">🎹</div>
+        <div><b>.svp をドラッグ&amp;ドロップ</b> または「開く」ボタンで読み込み</div>
+        <div>選択: ドラッグで範囲選択 / <code>Shift+クリック</code> 追加選択 / ダブルクリック=追加・歌詞 / <code>Tab</code> 次の歌詞へ / <code>Del</code> 削除 / <code>Ctrl+Z</code> 元に戻す / <code>Space</code> 再生 / <code>Ctrl+C/V</code> コピペ</div>
+        <div>スクロール: ホイール横 / <code>Shift+ホイール</code> 縦(音程) / <code>Ctrl+ホイール</code> ズーム</div>
+      </div>
+    </div>
+    <div id="vResize2"></div>
+    <div id="lyricWrap"><canvas id="cvLyric"></canvas></div>
+    <div id="noteEditor">
+      <label id="rowLyric">歌詞 <textarea id="edLyric" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+      <label id="rowPhon">音素 <input id="edPhon" autocomplete="off" placeholder="空欄=自動"><button id="edPhonAuto" type="button" title="ひらがなから音素を自動生成">自動→</button></label>
+      <div id="lyricSplit" style="display:none">
+        <label><input type="checkbox" id="edSplit" checked> スペース区切りで割当</label>
+        <div class="edHint">選択<N>ノートへ順番に歌詞を割当（未チェック=1文字ずつ）</div>
+      </div>
+      <div class="edHint" id="edHintMain">Enter確定 / Tab次へ / Shift+Tab前へ / Esc閉じる</div>
+    </div>
+  </div>
+</div>
+<div id="drop-overlay">ドロップで読み込み</div>
+
+<script>
+"use strict";
+/* ==================== constants (Dreamtonics公式: 1 quarter = 705,600,000 blicks) ==================== */
+const QUARTER = 705600000;
+const KEYS_W = 64, RULER_H = 22;
+const ROW_H = 11;                 // px per semitone
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const BLACK = [1,3,6,8,10];
+
+/* ==================== state ==================== */
+let project = null;               // parsed JSON (mutable)
+let fileName = "";
+let rows = [];                    // [{name, uuid, notes, blickOffset, mute, trackIdx, ...}]
+let endBlick = QUARTER * 16;
+let sel = null;                   // {row, note} focused note (editor anchor)
+let selSet = new Set();           // selected note objects (active track only)
+let showPhonemes = false;         // note label display mode
+let marquee = null;               // {x0,y0,x1,y1,moved,shift} in canvas CSS coords
+let activeTrackIdx = 0;           // track shown/edited in the roll
+let playhead = 0;                 // blick
+let playing = false;
+let scrollT = 0, scrollP = 68;    // left blick, bottom pitch (MIDI number at bottom edge)
+let pxPerQuarter = 90, zoomY = 1; // row_h = ROW_H*zoomY
+let snap = 176400000;
+let undoStack = [];
+let redoStack = [];
+let dirty = false;
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const $ = id => document.getElementById(id);
+const ui = { openBtn:$("openBtn"), saveBtn:$("saveBtn"), playBtn:$("playBtn"), stopBtn:$("stopBtn"),
+  bpmInput:$("bpmInput"), snapSel:$("snapSel"), phonBtn:$("phonBtn"), metroBtn:$("metroBtn"), followBtn:$("followBtn"), stopModeBtn:$("stopModeBtn"), status:$("status"),
+  fileInput:$("fileInput"), hint:$("hint"), drop:$("drop-overlay"),
+  trackList: $("trackList"), noteEditor: $("noteEditor"), rowLyric: $("rowLyric"), rowPhon: $("rowPhon"), edLyric: $("edLyric"), edPhon: $("edPhon"),
+  edPhonAuto: $("edPhonAuto"), edSplit: $("edSplit"), lyricSplit: $("lyricSplit") };
+const cvMini = document.getElementById("cvMini"), ctxMini = cvMini.getContext("2d");
+const cvLyric = document.getElementById("cvLyric"), ctxLyric = cvLyric.getContext("2d");
+
+/* ==================== tempo / meter helpers ==================== */
+function tempoMarks() {
+  const t = (project && project.time && project.time.tempo) || [];
+  return t.length ? [...t].sort((a,b)=>a.position-b.position) : [{position:0,bpm:120}];
+}
+function meterMarks() {
+  const m = (project && project.time && project.time.meter) || [];
+  return m.length ? [...m].sort((a,b)=>a.index-b.index) : [{index:0,numerator:4,denominator:4}];
+}
+// blick -> seconds (tempo map aware)
+function secOf(b) {
+  const t = tempoMarks(); let acc = 0;
+  for (let i=0;i<t.length;i++) {
+    const start = t[i].position, end = i+1<t.length ? t[i+1].position : Infinity;
+    if (b <= end || i===t.length-1) {
+      return acc + Math.max(0, b - start) * (60 / t[i].bpm / QUARTER);
+    }
+    acc += (end - start) * (60 / t[i].bpm / QUARTER);
+  }
+  return acc;
+}
+// seconds -> blick (inverse)
+function blickOf(sec) {
+  const t = tempoMarks(); let accSec = 0;
+  for (let i=0;i<t.length;i++) {
+    const start = t[i].position, end = i+1<t.length ? t[i+1].position : Infinity;
+    const segSec = (end===Infinity) ? Infinity : (end-start)*(60/t[i].bpm/QUARTER);
+    if (sec <= accSec + segSec) return start + (sec-accSec) * (t[i].bpm * QUARTER / 60);
+    accSec += segSec;
+  }
+  const last = t[t.length-1];
+  return last.position + (sec-accSec) * (last.bpm * QUARTER / 60);
+}
+function measureBlick(m) { return m.numerator * QUARTER * 4 / m.denominator; }
+function barLines() { // [{b, meter}]
+  const ms = meterMarks(), out = [];
+  let b = 0;
+  for (let i=0;i<ms.length;i++) {
+    if (i>0) { // measures before next meter change
+      const prev = ms[i-1], cur = ms[i];
+      while (b < cur.index * measureBlick(prev)) b += measureBlick(prev);
+    }
+    while (b < endBlick) { out.push({b, m:ms[i]}); b += measureBlick(ms[i]); }
+    if (i===ms.length-1) break;
+  }
+  return out;
+}
+
+/* ==================== svp parse ==================== */
+// Build rows as (track, reference) pairs — one row per instance, track-colored.
+// v2/v3: notes live in library[]; tracks reference them via mainRef/groups[].groupID.
+//   absolute position = ref.blickAbsoluteBegin + ref.blickOffset + note.onset
+// v1: notes directly in tracks[].mainGroup.notes; mainRef still carries offsets.
+function parseProject(json, name, opts = {}) {
+  project = json; fileName = name;
+  const libMap = new Map();
+  for (const l of project.library || []) if (l && l.uuid) libMap.set(l.uuid, l);
+  rows = [];
+  let trackIdx = 0;
+  for (const tr of project.tracks || []) {
+    const tName = tr.name || `Track ${trackIdx+1}`;
+    const refs = [tr.mainRef, ...(tr.groups || [])].filter(Boolean);
+    let instIdx = 0;
+    for (const ref of refs) {
+      let holder = null, baseName = tName;
+      if (ref.groupID && libMap.has(ref.groupID)) {
+        holder = libMap.get(ref.groupID);
+        baseName = holder.name && holder.name !== tName ? `${tName} · ${holder.name}` : tName;
+      } else if (Array.isArray(tr.mainGroup?.notes) && tr.mainGroup.notes.length &&
+                 (!ref.groupID || ref === tr.mainRef)) {
+        holder = tr.mainGroup; // v1 format (or unreferenced mainGroup with notes)
+        baseName = tName;
+      }
+      if (!holder || !Array.isArray(holder.notes) || !holder.notes.length) continue;
+      rows.push({
+        name: instIdx ? `${baseName} (${instIdx+1})` : baseName,
+        trackName: tName, trackIdx,
+        uuid: holder.uuid, holder, notes: holder.notes,
+        blickOffset: (ref.blickAbsoluteBegin || 0) + (ref.blickOffset || 0),
+        pitchOffset: ref.pitchOffset || 0,
+        mute: !!ref.mute,
+        hue: (210 + trackIdx * 137.5) % 360,
+      });
+      instIdx++;
+    }
+    trackIdx++;
+  }
+  if (!rows.length) { setStatus("ノートが見つからない（mainGroup/library に notes なし）"); return false; }
+  let maxEnd = 0;
+  for (const r of rows) for (const n of r.notes)
+    maxEnd = Math.max(maxEnd, (n.onset + n.duration + r.blickOffset));
+  endBlick = Math.ceil((maxEnd + QUARTER*4) / (QUARTER*4)) * QUARTER*4;
+  // default bpm input
+  ui.bpmInput.value = tempoMarks()[0].bpm;
+  // fit view
+  const w = cv.clientWidth - KEYS_W;
+  const quarters = endBlick / QUARTER;
+  pxPerQuarter = Math.max(24, Math.min(220, w / quarters));
+  // fit pitch
+  let lo=127, hi=0;
+  for (const r of rows) for (const n of r.notes) { lo=Math.min(lo,n.pitch+r.pitchOffset); hi=Math.max(hi,n.pitch+r.pitchOffset); }
+  scrollP = lo - 4; // bottom pitch
+  zoomY = Math.max(0.6, Math.min(2, cv.clientHeight / Math.max(1,(hi-lo+12)) / ROW_H));
+  sel = null; selSet = new Set(); playhead = 0;
+  if (!opts.keepHistory) { undoStack = []; redoStack = []; }
+  dirty = false;
+  ui.saveBtn.disabled = ui.playBtn.disabled = ui.stopBtn.disabled = false;
+  ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false; ui.stopModeBtn.disabled = false;
+  ui.hint.style.display = "none";
+  return true;
+}
+function setStatus(s) { ui.status.textContent = s; }
+
+/* ==================== view transform ==================== */
+const blick2px = b => (b / QUARTER) * pxPerQuarter;
+const px2blick = p => (p / pxPerQuarter) * QUARTER;
+function pitch2y(p) { return cv.height/dpr - (p - scrollP) * ROW_H * zoomY; }
+function y2pitch(y) { return (cv.height/dpr - y) / (ROW_H * zoomY) + scrollP; }
+function snapBlick(b) { if (!snap) return Math.round(b); return Math.round(b / snap) * snap; }
+
+/* ==================== rendering ==================== */
+let dpr = window.devicePixelRatio || 1;
+// 前回のバッキングサイズを記憶し、変化した時だけcanvasサイズを更新（CSSストレッチ防止）
+let lastSizes = { cv: [0,0], mini: [0,0], lyric: [0,0] };
+function syncBacking() {
+  const sizes = [
+    [cv, lastSizes.cv], [cvMini, lastSizes.mini], [cvLyric, lastSizes.lyric]
+  ];
+  for (const [c, memo] of sizes) {
+    const w = c.clientWidth * dpr, h = c.clientHeight * dpr;
+    if (memo[0] !== w || memo[1] !== h) { c.width = w; c.height = h; memo[0] = w; memo[1] = h; }
+  }
+}
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  syncBacking();
+  draw();
+}
+window.addEventListener("resize", resize);
+
+function draw() {
+  drawMain();
+  drawMini();
+  drawLyric();
+}
+function drawMain() {
+  const W = cv.width/dpr, H = cv.height/dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg");
+  ctx.fillRect(0,0,W,H);
+  if (!project) return;
+
+  const viewH = H - RULER_H;
+  // ---- vertical: piano keys + lane bg
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, RULER_H, W, viewH); ctx.clip();
+  ctx.translate(0, RULER_H);
+  // pitch rows
+  const pBottom = scrollP, pTop = Math.ceil(y2pitch(0));
+  for (let p = Math.floor(pBottom); p <= pTop; p++) {
+    const y = pitch2y(p) - ROW_H*zoomY;
+    const isBlack = BLACK.includes(p % 12);
+    ctx.fillStyle = isBlack ? "#171920" : "#1a1d24";
+    ctx.fillRect(KEYS_W, y, W-KEYS_W, ROW_H*zoomY);
+    ctx.strokeStyle = "#20232b"; ctx.beginPath();
+    ctx.moveTo(KEYS_W, y); ctx.lineTo(W, y); ctx.stroke();
+    if (p % 12 === 0) { // C line highlight
+      ctx.strokeStyle = "#33384a"; ctx.beginPath();
+      ctx.moveTo(KEYS_W, y + ROW_H*zoomY); ctx.lineTo(W, y + ROW_H*zoomY); ctx.stroke();
+    }
+  }
+  // piano keys column
+  ctx.fillStyle = "#1d2027"; ctx.fillRect(0, 0, KEYS_W, viewH);
+  for (let p = Math.floor(pBottom); p <= pTop; p++) {
+    const y = pitch2y(p) - ROW_H*zoomY;
+    const h = ROW_H*zoomY;
+    if (BLACK.includes(p % 12)) { ctx.fillStyle = "#0d0f14"; ctx.fillRect(0,y,KEYS_W*0.62,h); }
+    if (p % 12 === 0) {
+      ctx.fillStyle = "#dde1e8"; ctx.font = "9px sans-serif";
+      ctx.fillText(NOTE_NAMES[p%12] + (Math.floor(p/12)-1), KEYS_W*0.66, y + h - 2);
+    }
+  }
+  ctx.strokeStyle = "#33384a"; ctx.beginPath(); ctx.moveTo(KEYS_W,0); ctx.lineTo(KEYS_W,viewH); ctx.stroke();
+
+  // ---- horizontal grid: bars/beats
+  const t0 = scrollT, t1 = scrollT + px2blick(W - KEYS_W);
+  for (const bl of barLines()) {
+    if (bl.b < t0 || bl.b > t1) continue;
+    const x = KEYS_W + blick2px(bl.b - t0);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--grid-bar");
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,viewH); ctx.stroke();
+    // beat lines (only when zoomed enough)
+    if (pxPerQuarter > 26) {
+      for (let i=1;i<bl.m.numerator;i++) {
+        const bx = x + i * blick2px(measureBlick(bl.m)/bl.m.numerator);
+        if (bx < KEYS_W + W) { ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--grid-beat");
+          ctx.beginPath(); ctx.moveTo(bx,0); ctx.lineTo(bx,viewH); ctx.stroke(); }
+      }
+    }
+  }
+  // 16th grid when very zoomed
+  if (pxPerQuarter > 110) {
+    ctx.strokeStyle = "#242833";
+    const step = QUARTER/4, b0 = Math.ceil(t0/step)*step;
+    for (let b=b0; b<t1; b+=step) {
+      const x = KEYS_W + blick2px(b - t0);
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,viewH); ctx.stroke();
+    }
+  }
+
+  // ---- notes (active track full-color + editable; others faint ghost, not touchable)
+  let playingNote = null; // {onset, dur} of the note currently sounding (active track)
+  if (playing && playingBlick() !== null) {
+    const pb = playingBlick();
+    for (const r of rows) {
+      if (r.trackIdx !== activeTrackIdx) continue;
+      for (const n of r.notes) {
+        const onset = n.onset + r.blickOffset;
+        if (pb >= onset && pb < onset + n.duration) { playingNote = { onset, dur: n.duration }; break; }
+      }
+      if (playingNote) break;
+    }
+  }
+  for (const r of rows) drawRow(r, t0, t1, viewH, r.trackIdx === activeTrackIdx, playingNote);
+  ctx.restore();
+
+  // ---- marquee
+  if (marquee) {
+    const x = Math.min(marquee.x0, marquee.x1), y = Math.min(marquee.y0, marquee.y1);
+    const w = Math.abs(marquee.x1 - marquee.x0), h = Math.abs(marquee.y1 - marquee.y0);
+    ctx.fillStyle = "rgba(79,140,255,.08)";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "rgba(79,140,255,.9)";
+    ctx.setLineDash([4,3]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+  }
+
+  // ---- ruler
+  ctx.fillStyle = "#1d2027"; ctx.fillRect(0,0,W,RULER_H);
+  ctx.strokeStyle = "#33384a"; ctx.beginPath(); ctx.moveTo(0,RULER_H); ctx.lineTo(W,RULER_H); ctx.stroke();
+  ctx.fillStyle = "#8b93a3"; ctx.font = "10px sans-serif";
+  for (const bl of barLines()) {
+    if (bl.b < t0 || bl.b > t1) continue;
+    const x = KEYS_W + blick2px(bl.b - t0);
+    const barNo = Math.round(bl.b / measureBlick(bl.m)) + 1;
+    ctx.fillText(barNo, x + 3, 14);
+    ctx.strokeStyle = "#4a5060"; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,6); ctx.stroke();
+  }
+  // playhead
+  if (playhead >= t0 && playhead <= t1) {
+    const x = KEYS_W + blick2px(playhead - t0);
+    ctx.strokeStyle = "#ff5d7a"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); ctx.lineWidth = 1;
+  }
+}
+
+/* ==================== playing-note lookup (shared by draw & lyric strip) ==================== */
+function playingBlick() {
+  if (!playing) return null;
+  return blickAtElapsed((AC ? AC.currentTime : 0) - sched.startTime) + sched.startBlick;
+}
+
+/* ==================== minimap (overview) ==================== */
+let miniDrag = null; // {mode: "pan"|"move", grabT0, grabB}
+function drawMini() {
+  const W = cvMini.width/dpr, H = cvMini.height/dpr;
+  ctxMini.setTransform(dpr,0,0,dpr,0,0);
+  ctxMini.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg");
+  ctxMini.fillRect(0,0,W,H);
+  if (!project) return;
+  // pitch range across all tracks (fixed scale, fits overview)
+  let lo=127, hi=0;
+  for (const r of rows) for (const n of r.notes) { lo=Math.min(lo,n.pitch+r.pitchOffset); hi=Math.max(hi,n.pitch+r.pitchOffset); }
+  lo -= 2; hi += 2;
+  const px2 = W / Math.max(1, endBlick); // x per blick
+  const py = p => H - 4 - (p - lo) / Math.max(1, hi - lo) * (H - 8);
+  // notes
+  for (const r of rows) {
+    const active = r.trackIdx === activeTrackIdx;
+    ctxMini.fillStyle = `hsla(${r.hue},${active?65:40}%,${active?60:45}%,${active?0.9:0.35})`;
+    for (const n of r.notes) {
+      const onset = n.onset + r.blickOffset;
+      const x = onset * px2, w = Math.max(1, n.duration * px2);
+      const y = py(n.pitch + r.pitchOffset) - 1.5;
+      ctxMini.fillRect(x, y, w, 3);
+    }
+  }
+  // visible window
+  const vx = scrollT * px2, vw = px2blick(cv.clientWidth - KEYS_W) * px2;
+  ctxMini.fillStyle = "rgba(79,140,255,.12)";
+  ctxMini.fillRect(vx, 0, Math.max(6,vw), H);
+  ctxMini.strokeStyle = "rgba(79,140,255,.9)"; ctxMini.lineWidth = 1.5;
+  ctxMini.strokeRect(vx + 0.5, 1, Math.max(6,vw) - 1, H - 2);
+  ctxMini.lineWidth = 1;
+  // playhead
+  if (playhead > 0) {
+    ctxMini.strokeStyle = "#ff5d7a";
+    ctxMini.beginPath(); ctxMini.moveTo(playhead * px2, 0); ctxMini.lineTo(playhead * px2, H); ctxMini.stroke();
+  }
+}
+function miniHit(e) {
+  const rect = cvMini.getBoundingClientRect();
+  return { px: e.clientX - rect.left, py: e.clientY - rect.top, rect };
+}
+function miniSeekOrStart(e) {
+  if (!project) return;
+  const { px, rect } = miniHit(e);
+  const W = cvMini.width/dpr;
+  const bAt = (px / W) * endBlick;
+  const vx = scrollT * (W / endBlick), vw = px2blick(cv.clientWidth - KEYS_W) * (W / endBlick);
+  if (px >= vx && px <= vx + Math.max(6,vw)) {
+    // inside window → drag it
+    miniDrag = { mode: "move", grabB: bAt, grabT0: scrollT };
+  } else {
+    // click outside → center view there
+    scrollT = Math.max(0, bAt - px2blick(cv.clientWidth - KEYS_W) / 2);
+    miniDrag = { mode: "pan", grabB: bAt, grabT0: scrollT };
+    if (playing) restartPlayback();
+    draw();
+  }
+}
+cvMini.addEventListener("mousedown", e => { e.preventDefault(); hideEditor(); miniSeekOrStart(e); });
+cvMini.addEventListener("mousemove", e => {
+  if (!miniDrag || !project) return;
+  const { px } = miniHit(e);
+  const W = cvMini.width/dpr;
+  const bAt = (px / W) * endBlick;
+  if (miniDrag.mode === "move") scrollT = Math.max(0, miniDrag.grabT0 + (bAt - miniDrag.grabB));
+  else scrollT = Math.max(0, miniDrag.grabT0 + (bAt - miniDrag.grabB)); // pan keeps relative grab
+  draw();
+});
+window.addEventListener("mouseup", () => { miniDrag = null; });
+cvMini.addEventListener("dblclick", e => {
+  if (!project) return;
+  const { px } = miniHit(e);
+  const W = cvMini.width/dpr;
+  const bAt = (px / W) * endBlick;
+  scrollT = Math.max(0, bAt - px2blick(cv.clientWidth - KEYS_W) / 2);
+  if (playing) restartPlayback();
+  draw();
+});
+
+/* ==================== lyric strip (below roll) ==================== */
+function drawLyric() {
+  const W = cvLyric.width/dpr, H = cvLyric.height/dpr;
+  ctxLyric.setTransform(dpr,0,0,dpr,0,0);
+  ctxLyric.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel");
+  ctxLyric.fillRect(0,0,W,H);
+  if (!project) return;
+  const t0 = scrollT, t1 = scrollT + px2blick(W - KEYS_W);
+  // active row with most notes in view (単一音程化: 代表行)
+  const active = rows.filter(r => r.trackIdx === activeTrackIdx);
+  let row = null, best = -1;
+  for (const r of active) {
+    let c = 0;
+    for (const n of r.notes) { const onset = n.onset + r.blickOffset; if (onset + n.duration >= t0 && onset <= t1) c++; }
+    if (c > best) { best = c; row = r; }
+  }
+  if (!row) return;
+  const midY = H / 2;
+  // time grid ticks
+  ctxLyric.strokeStyle = "#2a2e38";
+  for (const bl of barLines()) {
+    if (bl.b < t0 || bl.b > t1) continue;
+    const x = KEYS_W + blick2px(bl.b - t0);
+    ctxLyric.beginPath(); ctxLyric.moveTo(x, H-8); ctxLyric.lineTo(x, H); ctxLyric.stroke();
+  }
+  const pb = playingBlick();
+  for (const n of row.notes) {
+    const onset = n.onset + row.blickOffset;
+    if (onset + n.duration < t0 || onset > t1) continue;
+    const x = KEYS_W + blick2px(onset - t0);
+    const w = Math.max(2, blick2px(n.duration));
+    const disp = n.lyrics || "";
+    const isCont = !disp || disp === "-";
+    const isSel = selSet.has(n);
+    const isFocus = sel && sel.note === n;
+    const isPlaying = pb !== null && pb >= onset && pb < onset + n.duration;
+    // box — ピアノロール本体と同系色（トラックhue、無歌詞は暗め）
+    ctxLyric.fillStyle = isPlaying ? "#ffd34d" : isFocus ? "#ffffff" : `hsla(${row.hue},65%,${isCont?45:60}%,${isSel?1:0.95})`;
+    ctxLyric.beginPath();
+    ctxLyric.roundRect(x + 1, midY - 13, Math.max(6, w - 2), 26, 4);
+    ctxLyric.fill();
+    if (isSel && !isFocus) { // batch-selected: white outline (本体と同様)
+      ctxLyric.strokeStyle = "#ffffff"; ctxLyric.lineWidth = 1.2;
+      ctxLyric.stroke(); ctxLyric.lineWidth = 1;
+    }
+    if (w > 8 && disp) {
+      ctxLyric.fillStyle = "#0d0f14";
+      ctxLyric.font = "12px sans-serif";
+      ctxLyric.fillText(disp, x + 4, midY + 4, w - 6);
+    }
+  }
+  // playhead
+  if (playhead >= t0 && playhead <= t1) {
+    const x = KEYS_W + blick2px(playhead - t0);
+    ctxLyric.strokeStyle = "#ff5d7a"; ctxLyric.lineWidth = 1.5;
+    ctxLyric.beginPath(); ctxLyric.moveTo(x, 0); ctxLyric.lineTo(x, H); ctxLyric.stroke(); ctxLyric.lineWidth = 1;
+  }
+}
+// lyric strip interactions: click = seek, dblclick on box = edit that note, drag box = move onset
+let lyrDrag = null;
+function lyricHit(e) {
+  const rect = cvLyric.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  if (!project || px < KEYS_W) return null;
+  const b = scrollT + px2blick(px - KEYS_W);
+  const active = rows.filter(r => r.trackIdx === activeTrackIdx);
+  let row = null, best = -1;
+  const t1 = scrollT + px2blick(cvLyric.clientWidth - KEYS_W);
+  for (const r of active) {
+    let c = 0;
+    for (const n of r.notes) { const onset = n.onset + r.blickOffset; if (onset + n.duration >= scrollT && onset <= t1) c++; }
+    if (c > best) { best = c; row = r; }
+  }
+  if (!row) return null;
+  for (const n of row.notes) {
+    const onset = n.onset + row.blickOffset;
+    if (b >= onset && b <= onset + n.duration) return { row, note: n, b };
+  }
+  return { row, note: null, b };
+}
+cvLyric.addEventListener("mousedown", e => {
+  if (!project) return;
+  const h = lyricHit(e);
+  if (!h) return;
+  hideEditor();
+  if (h.note) {
+    if (!selSet.has(h.note)) selSet = new Set([h.note]);
+    sel = { row: h.row, note: h.note };
+    pushUndo();
+    lyrDrag = { row: h.row, note: h.note, grabRel: (snap ? snapBlick(h.b - h.row.blickOffset) : h.b - h.row.blickOffset) - h.note.onset, moved: false };
+    draw();
+  } else {
+    playhead = Math.max(0, h.b);
+    if (playing) restartPlayback();
+    draw();
+  }
+});
+cvLyric.addEventListener("mousemove", e => {
+  if (!lyrDrag) return;
+  const rect = cvLyric.getBoundingClientRect();
+  const b = scrollT + px2blick(e.clientX - rect.left - KEYS_W);
+  const relB = b - lyrDrag.row.blickOffset;
+  const newOnset = Math.max(0, snapBlick(relB) - lyrDrag.grabRel);
+  if (newOnset !== lyrDrag.note.onset) { lyrDrag.note.onset = newOnset; lyrDrag.moved = true; dirty = true; draw(); }
+});
+window.addEventListener("mouseup", () => { lyrDrag = null; });
+cvLyric.addEventListener("dblclick", e => {
+  if (!project) return;
+  const h = lyricHit(e);
+  if (h && h.note) {
+    selSet = new Set([h.note]);
+    sel = { row: h.row, note: h.note };
+    draw();
+    openEditor("lyric");
+  }
+});
+function drawRow(r, t0, t1, viewH, isActive, playingNote) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(KEYS_W, 0, cv.width/dpr - KEYS_W, viewH); ctx.clip();
+  ctx.globalAlpha = isActive ? 1 : 0.13;   // ghost: other tracks faintly visible
+  for (const n of r.notes) {
+    const onset = n.onset + r.blickOffset, p = n.pitch + r.pitchOffset;
+    if (onset + n.duration < t0 || onset > t1) continue;
+    const x = KEYS_W + blick2px(onset - t0);
+    const w = Math.max(2, blick2px(n.duration));
+    const y = pitch2y(p) - ROW_H*zoomY;
+    const h = ROW_H*zoomY;
+    const isSel = isActive && selSet.has(n);
+    const isFocus = isActive && sel && sel.note === n;
+    const isPlaying = isActive && playingNote && playingNote.onset === onset && playingNote.dur === n.duration;
+    const disp = showPhonemes ? (n.phonemes || "") : (n.lyrics || "");
+    const isCont = !disp || disp === "-";
+    ctx.fillStyle = isPlaying ? "#ffd34d" : isFocus ? "#ffffff" : `hsla(${r.hue},65%,${isCont?45:60}%,${r.mute?0.3:0.95})`;
+    ctx.beginPath();
+    const rad = Math.min(3, w/2, h/2);
+    ctx.roundRect(x, y+0.5, w, h-1, rad); ctx.fill();
+    if (isSel && !isFocus) { // batch-selected: white outline
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.2;
+      ctx.stroke(); ctx.lineWidth = 1;
+    }
+    if (w > 14 && h >= 8 && isActive && disp) {
+      ctx.fillStyle = isFocus ? "#000" : "#0d0f14";
+      ctx.font = `${Math.min(11, h-2)}px sans-serif`;
+      ctx.fillText(disp, x + 3, y + h - 2.5, w - 4);
+    }
+  }
+  ctx.restore();
+}
+
+/* ==================== hit test ==================== */
+function hit(px, py) {
+  const W = cv.width/dpr;
+  if (px < KEYS_W || py < RULER_H) return null;
+  const b = scrollT + px2blick(px - KEYS_W);
+  const p = Math.floor(y2pitch(py - RULER_H));
+  for (const r of rows) {
+    if (r.trackIdx !== activeTrackIdx) continue; // 現在トラックのみ触れる
+    for (const n of r.notes) {
+      const onset = n.onset + r.blickOffset;
+      if (b >= onset && b <= onset + n.duration && p === n.pitch + r.pitchOffset) {
+        const x = KEYS_W + blick2px(onset - scrollT);
+        const wpx = blick2px(n.duration);
+        const edge = Math.min(7, wpx/3);
+        const mode = px < x + edge ? "resizeL" : px > x + wpx - edge ? "resizeR" : "move";
+        // 掴んだ位置(スナップグリッド上)とノート相対 onset の差分を保持。
+        // 注意: n.onset は行内相対値(blickOffsetは加算しない)なので、b も行内相対に変換してから使う。
+        const relB = b - r.blickOffset; // 行内相対のカーソル位置
+        return { row: r, note: n, mode,
+                 grabOff: mode === "move" ? b - onset : 0,
+                 grabRel: mode === "move" ? snapBlick(relB) - n.onset : 0,
+                 grabB: b };
+      }
+    }
+  }
+  return { row: null, note: null, mode: "empty", grabOff: 0 };
+}
+
+/* ==================== selection ==================== */
+function selectInRect(x0, y0, x1, y1) {
+  const rx0 = Math.min(x0,x1), rx1 = Math.max(x0,x1), ry0 = Math.min(y0,y1), ry1 = Math.max(y0,y1);
+  selSet = new Set(); sel = null;
+  for (const r of rows) {
+    if (r.trackIdx !== activeTrackIdx) continue;
+    for (const n of r.notes) {
+      const onset = n.onset + r.blickOffset, p = n.pitch + r.pitchOffset;
+      const nx0 = KEYS_W + blick2px(onset - scrollT);
+      const nx1 = nx0 + Math.max(2, blick2px(n.duration));
+      const ny1 = pitch2y(p) + RULER_H, ny0 = ny1 - ROW_H*zoomY;
+      if (nx1 >= rx0 && nx0 <= rx1 && ny1 >= ry0 && ny0 <= ry1) { selSet.add(n); sel = { row: r, note: n }; }
+    }
+  }
+  setStatus(selSet.size ? `${selSet.size}件選択` : "選択解除");
+  draw();
+}
+
+/* ==================== hiragana → phoneme (公式ROMAJI音素表 準拠) ==================== */
+/* 出典: dreamtonics.com/ja/svstudio-resources/ 公式音素表 (docs/phoneme-japanese-romaji.json)
+   母音 a i u e o N(ん) / 半母音 w y v / 子音 t d k g n m r s sh h f z j ts ch b p v
+   拗音は1トークン: ky gy sh j ch ny hy my by py ry ty dy
+   注: SynthV本体は末尾母音を次ノートに繰り越すが、本ツールは1ノート完結の
+   完全発音を生成する（前後ノートが空欄でも音が欠けない方式） */
+const MORA_BASE = {
+  "ア":{"v":"a"},"イ":{"v":"i"},"ウ":{"v":"u"},"エ":{"v":"e"},"オ":{"v":"o"},
+  "カ":{"c":"k","v":"a"},"キ":{"c":"k","v":"i"},"ク":{"c":"k","v":"u"},"ケ":{"c":"k","v":"e"},"コ":{"c":"k","v":"o"},
+  "ガ":{"c":"g","v":"a"},"ギ":{"c":"g","v":"i"},"グ":{"c":"g","v":"u"},"ゲ":{"c":"g","v":"e"},"ゴ":{"c":"g","v":"o"},
+  "サ":{"c":"s","v":"a"},"シ":{"c":"sh","v":"i"},"ス":{"c":"s","v":"u"},"セ":{"c":"s","v":"e"},"ソ":{"c":"s","v":"o"},
+  "ザ":{"c":"z","v":"a"},"ジ":{"c":"j","v":"i"},"ズ":{"c":"z","v":"u"},"ゼ":{"c":"z","v":"e"},"ゾ":{"c":"z","v":"o"},
+  "タ":{"c":"t","v":"a"},"チ":{"c":"ch","v":"i"},"ツ":{"c":"ts","v":"u"},"テ":{"c":"t","v":"e"},"ト":{"c":"t","v":"o"},
+  "ダ":{"c":"d","v":"a"},"ヂ":{"c":"j","v":"i"},"ヅ":{"c":"ts","v":"u"},"デ":{"c":"d","v":"e"},"ド":{"c":"d","v":"o"},
+  "ナ":{"c":"n","v":"a"},"ニ":{"c":"n","v":"i"},"ヌ":{"c":"n","v":"u"},"ネ":{"c":"n","v":"e"},"ノ":{"c":"n","v":"o"},
+  "ハ":{"c":"h","v":"a"},"ヒ":{"c":"h","v":"i"},"フ":{"c":"f","v":"u"},"ヘ":{"c":"h","v":"e"},"ホ":{"c":"h","v":"o"},
+  "バ":{"c":"b","v":"a"},"ビ":{"c":"b","v":"i"},"ブ":{"c":"b","v":"u"},"ベ":{"c":"b","v":"e"},"ボ":{"c":"b","v":"o"},
+  "パ":{"c":"p","v":"a"},"ピ":{"c":"p","v":"i"},"プ":{"c":"p","v":"u"},"ペ":{"c":"p","v":"e"},"ポ":{"c":"p","v":"o"},
+  "マ":{"c":"m","v":"a"},"ミ":{"c":"m","v":"i"},"ム":{"c":"m","v":"u"},"メ":{"c":"m","v":"e"},"モ":{"c":"m","v":"o"},
+  "ヤ":{"c":"y","v":"a"},"ユ":{"c":"y","v":"u"},"ヨ":{"c":"y","v":"o"},
+  "ラ":{"c":"r","v":"a"},"リ":{"c":"r","v":"i"},"ル":{"c":"r","v":"u"},"レ":{"c":"r","v":"e"},"ロ":{"c":"r","v":"o"},
+  "ワ":{"c":"w","v":"a"},"ヰ":{"c":"w","v":"i"},"ヱ":{"c":"w","v":"e"},"ヲ":{"c":"w","v":"o"},
+  "ヴ":{"c":"v","v":"u"},
+  "ン":{"v":"N"},
+};
+function palatalize(c) {
+  const map = { k:"ky", g:"gy", s:"sh", t:"ty", d:"dy", n:"ny", h:"hy", b:"by", p:"py", m:"my", r:"ry" };
+  return map[c] || c; // sh/ch/j/ts 等は既に口蓋化済み
+}
+function splitMorae(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i], next = s[i+1];
+    if (ch === "ッ") { out.push({ c: "cl" }); continue; }
+    if (ch === "ー" || ch === "〜") {
+      const last = out[out.length - 1];
+      if (last && last.v && last.v !== "N") out.push({ v: last.v }); // 長音: 直前母音を延長
+      continue;
+    }
+    if (!/[\u30a0-\u30ff]/.test(ch)) continue; // かな以外スキップ
+    const base = MORA_BASE[ch];
+    if (!base) continue;
+    if (next && "ャュョ".includes(next)) {
+      // 拗音: 子音を口蓋化し1トークン化 (きゃ→ky, てゃ→ty, しゃ→sh)
+      out.push({ c: palatalize(base.c), v: { "ャ":"a","ュ":"u","ョ":"o" }[next] });
+      i++; continue;
+    }
+    if (next && "ァィゥェォ".includes(next)) {
+      const nv = { "ァ":"a","ィ":"i","ゥ":"u","ェ":"e","ォ":"o" }[next];
+      if (ch === "ウ") { out.push({ c: "w", v: nv }); } // うぃ→w i 等
+      else out.push({ c: base.c, v: nv });              // ふぁ→f a, てぃ→t i, ヴぁ→v a
+      i++; continue;
+    }
+    out.push({ ...base });
+  }
+  return out;
+}
+function hiraganaToPhonemes(lyr) {
+  if (!lyr || !/[\u3040-\u30ff\u30fc]/.test(lyr)) return ""; // かな/ー以外は変換しない
+  const kata = [...lyr].map(ch => {
+    const code = ch.codePointAt(0);
+    if (code === 0x3094) return "ヴ";               // ゔ
+    if (code >= 0x3041 && code <= 0x3096) return String.fromCodePoint(code + 0x60); // ひらがな→カタカナ
+    return ch;
+  });
+  const morae = splitMorae(kata);
+  const parts = [];
+  for (const m of morae) {
+    if (m.c) parts.push(m.c);
+    if (m.v) parts.push(m.v);
+  }
+  return parts.join(" ");
+}
+
+/* ==================== note editor popup ==================== */
+let editorAnchor = "roll";   // ポップアップの位置基準: "roll"=ピアノロール / "lyric"=歌詞ストリップ
+function openEditor(anchor) {
+  if (!sel) return;
+  editorAnchor = anchor || "roll";
+  const r = sel.row, n = sel.note;
+  // 複数選択 = まとめ歌詞モード: 音素欄を隠し、歌詞を大きく複数行表示
+  const multi = selSet.size > 1;
+  ui.rowPhon.style.display = multi ? "none" : "";
+  ui.lyricSplit.style.display = multi ? "flex" : "none";
+  ui.lyricSplit.style.flexDirection = multi ? "column" : "";
+  ui.edLyric.rows = multi ? 4 : 1;
+  ui.noteEditor.style.width = multi ? "320px" : "";
+  const x = KEYS_W + blick2px(n.onset + r.blickOffset - scrollT);
+  const edW = multi ? 320 : 190;
+  const edH = multi ? 150 : 76;
+  const wrapEl = ui.noteEditor.parentElement;            // #rollWrap（位置基準コンテナ）
+  const wrapTop = wrapEl.getBoundingClientRect().top;
+  const wrapH = wrapEl.clientHeight;
+  let left = Math.min(Math.max(4, x - 10), wrapEl.clientWidth - edW - 4);
+  let top;
+  if (editorAnchor === "lyric") {
+    // 歌詞ストリップのノート真上（vResize1境界のすぐ上）にぴったり付ける
+    const lr = cvLyric.getBoundingClientRect();
+    top = lr.top - wrapTop - edH - 2;
+    if (top < 2) top = lr.top - wrapTop + lr.height + 4;  // 上に出しきれない場合は下
+  } else {
+    const cr = cv.getBoundingClientRect();
+    const yBottom = cr.top - wrapTop + pitch2y(n.pitch + r.pitchOffset) + RULER_H;
+    const yTop = yBottom - ROW_H * zoomY;
+    top = yBottom + 4;
+    if (top + edH > cr.bottom - wrapTop - 4) top = yTop - edH - 4;
+    if (top < 2) top = 2;
+  }
+  if (top < 2) top = 2;
+  if (top + edH > wrapH - 4) top = Math.max(2, wrapH - edH - 4);
+  ui.noteEditor.style.left = left + "px";
+  ui.noteEditor.style.top = top + "px";
+  ui.noteEditor.style.display = "flex";
+  if (multi) {
+    const cnt = ui.lyricSplit.querySelector(".edHint");
+    if (cnt) cnt.textContent = `選択${selSet.size}ノートへ順番に歌詞を割当（スペース区切り/未チェック=1文字ずつ）`;
+    ui.edLyric.value = "";   // まとめ入力は空から
+  } else {
+    ui.edLyric.value = n.lyrics || "";
+    ui.edPhon.value = n.phonemes || "";
+  }
+  ui.edLyric.focus(); ui.edLyric.select();
+}
+ui.edPhonAuto.onclick = () => {
+  const gen = hiraganaToPhonemes(ui.edLyric.value);
+  if (gen) { ui.edPhon.value = gen; ui.edPhon.focus(); }
+  else setStatus("ひらがな/カタカナからのみ自動生成できます");
+};
+function hideEditor() { ui.noteEditor.style.display = "none"; }
+function commitEditor(advance) {
+  if (!sel) { hideEditor(); return; }
+  const lyr = ui.edLyric.value;
+  const pho = ui.edPhon.value;
+  pushUndo();
+  if (selSet.size > 1) {
+    // まとめて割当: 選択ノートをonset順に並べ、歌詞を順番に割り当てる
+    const notes = [...selSet].sort((a,b) =>
+      (a.onset + (rows.find(rr=>rr.notes.includes(a))?.blickOffset||0)) - (b.onset + (rows.find(rr=>rr.notes.includes(b))?.blickOffset||0)));
+    const parts = ui.edSplit.checked ? lyr.trim().split(/[\s\n]+/) : [...lyr];
+    if (parts.length === 1 && !ui.edSplit.checked) { /* 1文字=全ノート同一扱い（従来挙動）はしない: 1文字目だけに割当 → 以下では各ノートに順番に */ }
+    notes.forEach((nn, idx) => {
+      nn.lyrics = idx < parts.length ? parts[idx] : "";
+      nn.phonemes = (nn === sel.note && pho) ? pho : nn.phonemes;
+    });
+    setStatus(`${notes.length}ノートへ歌詞を順番割当（${parts.length}語/字${parts.length < notes.length ? "、末尾ノートは空" : ""}）`);
+    // 選択は最初のノートに集約（連続編集しやすい）
+    sel = { row: rows.find(rr => rr.notes.includes(notes[0])), note: notes[0] };
+    selSet = new Set([sel.note]);
+  } else {
+    sel.note.lyrics = lyr;
+    sel.note.phonemes = pho;
+  }
+  dirty = true;
+  if (!advance) { hideEditor(); draw(); return; }
+  // Tab: jump to prev/next note (by onset) in the same row, keep editing
+  const sorted = [...sel.row.notes].sort((a,b) => a.onset - b.onset);
+  const i = sorted.indexOf(sel.note);
+  const j = Math.min(sorted.length-1, Math.max(0, i + advance));
+  if (j === i) { hideEditor(); draw(); return; }
+  sel = { row: sel.row, note: sorted[j] };
+  selSet = new Set([sel.note]);
+  // Tab移動したノートが表示域に入るようスクロール追従（メイン/歌詞ストリップ共通scrollT）
+  const nx = blick2px(sel.note.onset + sel.row.blickOffset - scrollT);
+  const viewW = cv.clientWidth - KEYS_W;
+  if (nx < 0) scrollT = Math.max(0, sel.note.onset + sel.row.blickOffset - px2blick(4));
+  else if (nx + blick2px(sel.note.duration) > viewW) scrollT = sel.note.onset + sel.row.blickOffset - px2blick(viewW * 0.6);
+  draw();
+  openEditor(editorAnchor);   // 歌詞ストリップ起点なら次ノートもストリップ付近に出す
+}
+for (const inp of [ui.edLyric, ui.edPhon]) {
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      if (inp === ui.edLyric && selSet.size > 1 && e.shiftKey) return; // まとめモード: Shift+Enterは改行
+      e.preventDefault(); commitEditor(0);
+    }
+    else if (e.key === "Tab") { e.preventDefault(); commitEditor(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape") { e.preventDefault(); hideEditor(); }
+    e.stopPropagation();
+  });
+}
+ui.phonBtn.onclick = () => {
+  showPhonemes = !showPhonemes;
+  ui.phonBtn.textContent = showPhonemes ? "表示: 音素" : "表示: 歌詞";
+  ui.phonBtn.classList.toggle("primary", showPhonemes);
+  draw(); setStatus(showPhonemes ? "音素表示（空欄=SynthV自動推定）" : "歌詞表示");
+};
+
+/* ==================== editing ==================== */
+function pushUndo() {
+  undoStack.push(JSON.stringify(project));
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack = [];               // 新編集で redo 履歴は無効化
+  dirty = true;
+}
+function undo() {
+  if (!undoStack.length) { setStatus("戻せる編集がありません"); return; }
+  redoStack.push(JSON.stringify(project));
+  restoreFrom(JSON.parse(undoStack.pop()));
+  setStatus("元に戻しました (Ctrl+Shift+Z でやり直し)");
+}
+function redo() {
+  if (!redoStack.length) { setStatus("やり直せる編集がありません"); return; }
+  undoStack.push(JSON.stringify(project));
+  restoreFrom(JSON.parse(redoStack.pop()));
+  setStatus("やり直しました");
+}
+function restoreFrom(restored) {
+  project = restored;
+  // re-run the same (track, reference) row-building as parseProject, keeping hues by holder uuid order
+  const saved = rows;
+  const ok = parseProject(project, fileName, { keepHistory: true }); // undo/redo中は履歴を消さない
+  if (!ok) { setStatus("undo/redo後の再パースに失敗"); return; }
+  const byUuid = new Map();
+  for (const o of saved) { const k = o.uuid; if (!byUuid.has(k)) byUuid.set(k, []); byUuid.get(k).push(o); }
+  for (const r of rows) {
+    const list = byUuid.get(r.uuid);
+    const o = list && list.length ? list.shift() : null;
+    if (o) r.hue = o.hue;
+  }
+  if (!rows.some(r => r.trackIdx === activeTrackIdx)) activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
+  renderTrackPane();
+  sel = null; selSet = new Set(); hideEditor(); dirty = true; draw();
+}
+function makeUuid() {
+  let s = "";
+  for (let i=0;i<16;i++) s += Math.floor(Math.random()*16).toString(16);
+  return s;
+}
+function deleteSelected() {
+  if (!selSet.size) return;
+  pushUndo();
+  for (const n of selSet) {
+    const r = rows.find(rr => rr.notes.includes(n));
+    if (r) { const i = r.notes.indexOf(n); if (i >= 0) r.notes.splice(i, 1); }
+  }
+  selSet = new Set(); sel = null; hideEditor();
+  draw(); setStatus("選択ノートを削除");
+}
+function addNote(row, b, p) {
+  pushUndo();
+  const onset = Math.max(0, snap ? snapBlick(b) : Math.round(b));
+  const n = { uuid: makeUuid(), musicalType: "singing", onset, duration: snap || QUARTER,
+    lyrics: "", phonemes: "", accent: "", pitch: p, detune: 0,
+    attributes: { evenSyllableDuration: true, muted: false },
+    takes: { activeTakeId: 0, takes: [{ id: 0, seedDuration: 0, seedPitch: 0, seedTimbre: 0, liked: false }] } };
+  row.notes.push(n);
+  selSet = new Set([n]);
+  sel = { row, note: n };
+  draw(); setStatus("ノート追加");
+  openEditor();
+}
+
+/* ==================== mouse ==================== */
+let drag = null;
+cv.addEventListener("mousedown", e => {
+  if (!project) return;
+  hideEditor();
+  const rect = cv.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  if (py < RULER_H && px > KEYS_W) { // seek
+    playhead = Math.max(0, scrollT + px2blick(px - KEYS_W));
+    if (playing) restartPlayback();
+    draw(); return;
+  }
+  if (e.button !== 0) {
+    // 右ボタン: 選択解除しない（contextmenuで歌詞編集を開くため）
+    return;
+  }
+  const h = hit(px, py);
+  if (h && h.note) {
+    if (e.shiftKey) { // toggle membership
+      if (selSet.has(h.note)) selSet.delete(h.note);
+      else { selSet.add(h.note); sel = { row: h.row, note: h.note }; }
+      setStatus(`${selSet.size}件選択`);
+      draw(); return;
+    }
+    if (!selSet.has(h.note)) selSet = new Set([h.note]);
+    sel = { row: h.row, note: h.note };
+    // snapshot for undo at drag start
+    pushUndo();
+    // snapshot all selected for group move
+    const snapArr = [...selSet].map(n => {
+      const r = rows.find(rr => rr.notes.includes(n));
+      return { n, onset0: n.onset, pitch0: n.pitch };
+    });
+    drag = { ...h, multi: selSet.size > 1 ? snapArr : null,
+      startB: scrollT + px2blick(px - KEYS_W), origOnset: h.note.onset, origDur: h.note.duration, origPitch: h.note.pitch, moved: false };
+    if (selSet.size > 1) setStatus(`${selSet.size}件を移動`);
+  } else {
+    drag = null;
+    marquee = { x0: px, y0: py, x1: px, y1: py, moved: false, shift: e.shiftKey };
+    if (!e.shiftKey) { selSet = new Set(); sel = null; }
+  }
+  draw();
+});
+cv.addEventListener("mousemove", e => {
+  const rect = cv.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  if (marquee) {
+    if (Math.abs(px - marquee.x0) > 3 || Math.abs(py - marquee.y0) > 3) marquee.moved = true;
+    marquee.x1 = px; marquee.y1 = py; draw(); return;
+  }
+  if (!drag) {
+    if (project && py > RULER_H && px > KEYS_W) {
+      const h = hit(px, py);
+      cv.style.cursor = h && h.note ? (h.mode === "move" ? "move" : "ew-resize") : "default";
+    }
+    return;
+  }
+  const b = scrollT + px2blick(px - KEYS_W);
+  const n = drag.note;
+  if (drag.mode === "move") {
+    const np = Math.round(y2pitch(py - RULER_H));
+    // 行内相対で完結: 掴んだグリッド点がカーソルに追従（grabRel = 掴み点-ノートonset）
+    const relB = b - drag.row.blickOffset;
+    const newOnset = Math.max(0, snapBlick(relB) - drag.grabRel);
+    const dx = newOnset - drag.origOnset;
+    const dy = np - drag.origPitch;
+    if (drag.multi) {
+      for (const it of drag.multi) {
+        it.n.onset = Math.max(0, it.onset0 + dx);
+        it.n.pitch = it.pitch0 + dy;
+      }
+    } else {
+      n.onset = newOnset;
+      n.pitch = np;
+    }
+  } else if (drag.mode === "resizeL") {
+    const newOnset = Math.min(drag.origOnset + drag.origDur - QUARTER/16, Math.max(0, snapBlick(b)));
+    n.duration = drag.origDur + (drag.origOnset - newOnset);
+    n.onset = newOnset;
+  } else { // resizeR
+    const end = Math.max(drag.origOnset + QUARTER/16, snapBlick(b));
+    n.duration = end - drag.origOnset;
+  }
+  drag.moved = true; dirty = true; draw();
+});
+window.addEventListener("mouseup", () => {
+  if (marquee) {
+    if (marquee.moved && !marquee.shift) selectInRect(marquee.x0, marquee.y0, marquee.x1, marquee.y1);
+    marquee = null; draw(); return;
+  }
+  if (drag && drag.moved && drag.startProject) { // finalize drag → one undo entry
+    // pushUndo happened at dragStart; project state is already current
+  }
+  drag = null;
+});
+cv.addEventListener("dblclick", e => {
+  if (!project) return;
+  const rect = cv.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const h = hit(px, py);
+  if (h && h.note) {
+    selSet = new Set([h.note]);
+    sel = { row: h.row, note: h.note };
+    draw();
+    openEditor();
+  } else {
+    const row = rows.find(r => r.trackIdx === activeTrackIdx) || rows[0];
+    const b = scrollT + px2blick(px - KEYS_W);
+    const p = Math.floor(y2pitch(py - RULER_H));
+    addNote(row, b, p);
+  }
+});
+cv.addEventListener("contextmenu", e => {
+  if (!project) return;
+  e.preventDefault();
+  const rect = cv.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const h = hit(px, py);
+  if (h && h.note) {
+    // 右クリックでノートを踏んだ: Shift中は追加選択、通常はそのノートだけ選択
+    if (e.shiftKey) {
+      if (selSet.has(h.note)) selSet.delete(h.note);
+      else { selSet.add(h.note); sel = { row: h.row, note: h.note }; }
+    } else {
+      if (!selSet.has(h.note)) selSet = new Set([h.note]);
+      sel = { row: h.row, note: h.note };
+    }
+    draw();
+    openEditor(editorAnchor);   // 歌詞編集ポップアップ
+  } else if (sel && selSet.size > 0) {
+    // 空白右クリック: 既存選択のまま歌詞編集を開く
+    openEditor(editorAnchor);
+  }
+});
+cv.addEventListener("wheel", e => {
+  if (!project) return;
+  e.preventDefault();
+  hideEditor();
+  const rect = cv.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  if (e.ctrlKey || e.metaKey) {
+    const bAt = scrollT + px2blick(px - KEYS_W);
+    pxPerQuarter = Math.max(6, Math.min(600, pxPerQuarter * (e.deltaY < 0 ? 1.15 : 1/1.15)));
+    scrollT = Math.max(0, bAt - px2blick(px - KEYS_W));
+  } else if (e.shiftKey) {
+    // Shift+ホイール: 縦スクロール（音程・拡大時の上下移動）
+    scrollP += Math.sign(e.deltaX !== 0 ? e.deltaX : e.deltaY) * 2;
+  } else {
+    // ホイール: 横スクロール（トラックパッドのdeltaXも考慮）
+    const dx = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+    scrollT = Math.max(0, scrollT + px2blick(dx));
+  }
+  draw();
+}, { passive: false });
+
+// 歌詞ストリップでも横スクロール（Shift+で縦に影響はないが音程帯は無意味なので横固定）
+cvLyric.addEventListener("wheel", e => {
+  if (!project) return;
+  e.preventDefault();
+  const dx = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+  scrollT = Math.max(0, scrollT + px2blick(dx));
+  draw();
+}, { passive: false });
+
+/* ==================== beforeunload guard ==================== */
+window.addEventListener("beforeunload", e => {
+  if (!dirty) return; // 未編集なら何もしない
+  e.preventDefault();
+  e.returnValue = "未保存の変更があります。本当にページを離れますか？";
+  return e.returnValue;
+});
+
+/* ==================== metronome ==================== */
+let metroOn = false, metroGain = null;
+ui.metroBtn.onclick = () => {
+  metroOn = !metroOn;
+  ui.metroBtn.textContent = metroOn ? "🥢 メトロノーム: ON" : "🥢 メトロノーム: OFF";
+  ui.metroBtn.classList.toggle("primary", metroOn);
+  setStatus(metroOn ? "メトロノームON（拍ごとにクリック音）" : "メトロノームOFF");
+};
+
+/* ==================== follow playhead (ピアノロール+歌詞ストリップの自動追従) ==================== */
+let followOn = true;   // 既定ON: 再生中に表示域が再生位置へ追従する
+const FOLLOW_MARGIN = 0.25; // 再生位置が右端から25%以内に入ったらスクロール
+function applyFollow() {
+  if (!playing || !followOn) return;
+  const viewW = px2blick(cv.clientWidth - KEYS_W);
+  const vt0 = scrollT, vt1 = scrollT + viewW;
+  const threshold = vt0 + viewW * (1 - FOLLOW_MARGIN);
+  if (playhead > threshold) {
+    scrollT = Math.max(0, Math.min(endBlick - viewW, playhead - viewW * 0.35));
+  } else if (playhead < vt0) {
+    scrollT = Math.max(0, playhead - viewW * 0.05);
+  }
+}
+ui.followBtn.onclick = () => {
+  followOn = !followOn;
+  ui.followBtn.textContent = "追従: " + (followOn ? "ON" : "OFF");
+  ui.followBtn.classList.toggle("primary", followOn);
+  savePrefs();
+  setStatus(followOn ? "再生位置に追従 ON（Fキーでも切替）" : "再生位置に追従 OFF（手動スクロール）");
+};
+function toggleFollow() { ui.followBtn.onclick(); }
+
+/* ==================== stop behavior ==================== */
+// stopMode: "stay" = その場で停止（再開は停止位置から）/ "return" = 再生位置に戻る（再開は前回の開始位置から）
+let stopMode = "stay";
+let lastStartBlick = null;
+function setStopModeText() {
+  ui.stopModeBtn.textContent = "■停止: " + (stopMode === "stay" ? "その場で停止" : "再生位置に戻る");
+}
+function toggleStopMode() {
+  stopMode = stopMode === "stay" ? "return" : "stay";
+  setStopModeText();
+  ui.stopModeBtn.classList.toggle("primary", stopMode === "return");
+  savePrefs();
+  setStatus(stopMode === "stay" ? "停止モード: その場で停止（Space/■とも）" : "停止モード: 再生位置に戻る（Space/■とも）");
+}
+ui.stopModeBtn.onclick = toggleStopMode;
+setStopModeText();
+
+function clickSound(sec, accent) {
+  const ac = audioCtx();
+  if (!metroGain) { metroGain = ac.createGain(); metroGain.gain.value = 0.5; metroGain.connect(ac.destination); }
+  const osc = ac.createOscillator(), g = ac.createGain();
+  osc.type = "square"; osc.frequency.value = accent ? 1760 : 880;
+  g.gain.setValueAtTime(0.12, sec);
+  g.gain.exponentialRampToValueAtTime(0.001, sec + 0.05);
+  osc.connect(g).connect(metroGain);
+  osc.start(sec); osc.stop(sec + 0.06);
+  sched.live.push({ osc, g });
+}
+function scheduleMetronome(fromB, toB, baseSec) {
+  if (!metroOn) return;
+  const ms = meterMarks();
+  for (const bl of barLines()) {
+    if (bl.b < fromB || bl.b >= toB) continue;
+    const beat = measureBlick(bl.m) / bl.m.numerator;
+    for (let i = 0; i < bl.m.numerator; i++) {
+      const b = bl.b + i * beat;
+      if (b < fromB || b >= toB) continue;
+      // 音拍は既に鳴っているノートと重ならないようクリックだけ鳴らす
+      const sec = baseSec + secOf(b) - secOf(fromB);
+      clickSound(sec, i === 0);
+    }
+  }
+}
+// hook: startPlaybackで拍を先読みスケジュールするため pump拡張 (boot時にも適用)
+
+/* ==================== clipboard ==================== */
+let clip = null;
+function copySel() {
+  if (!selSet.size) { setStatus("コピーするノートがありません"); return; }
+  const r0 = sel.row ? sel.row : rows.find(r => r.trackIdx === activeTrackIdx);
+  const base = Math.min(...[...selSet].map(n => n.onset));
+  clip = [...selSet].map(n => JSON.parse(JSON.stringify(n)));
+  clip._baseOnset = base; clip._row = r0;
+  setStatus(`${clip.length}ノートをコピー`);
+}
+function pasteClip() {
+  if (!clip || !clip.length) { setStatus("クリップボードが空です"); return; }
+  const r = rows.find(r => r.trackIdx === activeTrackIdx) || rows[0];
+  pushUndo();
+  // paste so first note lands at playhead (row-relative)
+  const anchor = Math.max(0, snap ? snapBlick(playhead - r.blickOffset) : Math.round(playhead - r.blickOffset));
+  const dx = anchor - (clip._baseOnset || 0);
+  selSet = new Set();
+  for (const src of clip) {
+    const n = JSON.parse(JSON.stringify(src));
+    n.uuid = makeUuid();
+    n.onset = Math.max(0, n.onset + dx);
+    r.notes.push(n);
+    selSet.add(n);
+  }
+  sel = { row: r, note: [...selSet][0] };
+  dirty = true;
+  draw();
+  setStatus(`${selSet.size}ノートを貼り付け（再生位置へ）`);
+}
+function duplicateSel() {
+  if (!selSet.size) return;
+  copySel();
+  // paste right after the selection end
+  const r = rows.find(r => r.trackIdx === activeTrackIdx) || rows[0];
+  pushUndo();
+  const selOnsets = [...selSet].map(n => n.onset), selDurs = [...selSet].map(n => n.onset + n.duration);
+  const end = Math.max(...selDurs), start = Math.min(...selOnsets);
+  const anchor = Math.max(0, snap ? snapBlick(end) : Math.round(end));
+  const dx = anchor - (clip._baseOnset || 0);
+  selSet = new Set();
+  for (const src of clip) {
+    const n = JSON.parse(JSON.stringify(src));
+    n.uuid = makeUuid();
+    n.onset = Math.max(0, n.onset + dx);
+    r.notes.push(n);
+    selSet.add(n);
+  }
+  sel = { row: r, note: [...selSet][0] };
+  dirty = true;
+  draw();
+  setStatus(`${selSet.size}ノートを複製`);
+}
+
+/* ==================== autosave (localStorage) ==================== */
+const AUTOSAVE_KEY = "svp-viewer:autosave";
+const PREFS_KEY = "svp-viewer:prefs";
+let lastAutosave = 0;
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ followOn, stopMode })); } catch(e) {}
+}
+function loadPrefs() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+    if (typeof o.followOn === "boolean") { followOn = o.followOn; ui.followBtn.textContent = "追従: " + (followOn ? "ON" : "OFF"); ui.followBtn.classList.toggle("primary", followOn); }
+    if (o.stopMode === "stay" || o.stopMode === "return") { stopMode = o.stopMode; setStopModeText(); ui.stopModeBtn.classList.toggle("primary", stopMode === "return"); }
+  } catch(e) {}
+}
+function scheduleAutosave() {
+  if (!project || !dirty) return;
+  const now = Date.now();
+  if (now - lastAutosave < 3000) return; // throttle 3s
+  lastAutosave = now;
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+      name: fileName, at: new Date().toISOString(), data: JSON.stringify(project)
+    }));
+    setStatusTip();
+  } catch (e) { /* quota超過等は無視 */ }
+}
+function setStatusTip() {
+  const el = document.getElementById("autosaveTip");
+  if (el) el.style.display = "inline";
+}
+setInterval(scheduleAutosave, 2000);
+function loadAutosave() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return;
+    const o = JSON.parse(raw);
+    const ts = new Date(o.at).toLocaleString("ja-JP");
+    if (confirm(`前回の作業中ファイルがあります。\n${o.name}（${ts} 時点の自動保存）\n復元しますか？\n\n「キャンセル」で新規読込から開始`)) {
+      const json = JSON.parse(o.data);
+      if (parseProject(json, o.name)) {
+        scrollT = 0; draw();
+        activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
+        renderTrackPane();
+        setStatus(`自動保存から復元: ${o.name}`);
+      }
+    } else {
+      localStorage.removeItem(AUTOSAVE_KEY);
+    }
+  } catch (e) { console.warn("autosave restore failed", e); }
+}
+// clear autosave after explicit save
+const _saveClick = ui.saveBtn.onclick;
+ui.saveBtn.onclick = () => { _saveClick(); try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e){} };
+
+/* ==================== keys ==================== */
+window.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (!project) return;
+  if (e.code === "Space") { e.preventDefault(); if (!e.repeat) togglePlay(); }  // リピート連打を無視して多重toggle防止
+  else if (e.key.toLowerCase() === "f") { if (!e.repeat) { e.preventDefault(); toggleFollow(); } }
+  else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelected(); }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    if (e.shiftKey) redo(); else undo();
+  }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "a") {
+    e.preventDefault();
+    const active = rows.filter(r => r.trackIdx === activeTrackIdx);
+    selSet = new Set(active.flatMap(r => r.notes));
+    sel = selSet.size ? { row: active[0], note: [...selSet][0] } : null;
+    setStatus(`全選択: ${selSet.size}ノート`);
+    draw();
+  }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "c") { e.preventDefault(); copySel(); }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "x") { e.preventDefault(); copySel(); deleteSelected(); }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "v") { e.preventDefault(); pasteClip(); }
+  else if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSel(); }
+  else if (e.key === "Escape") { selSet = new Set(); sel = null; hideEditor(); draw(); setStatus("選択解除"); }
+  else if (e.key.startsWith("Arrow") && selSet.size) {
+    e.preventDefault(); pushUndo();
+    const stepT = snap || QUARTER/4;
+    for (const n of selSet) {
+      if (e.key === "ArrowLeft") n.onset = Math.max(0, n.onset - stepT);
+      else if (e.key === "ArrowRight") n.onset += stepT;
+      else if (e.key === "ArrowUp") n.pitch += 1;
+      else if (e.key === "ArrowDown") n.pitch -= 1;
+    }
+    draw();
+  }
+});
+
+/* ==================== track pane (left) ==================== */
+function trackGroups() {
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.trackIdx)) map.set(r.trackIdx, { trackIdx: r.trackIdx, name: r.trackName, hue: r.hue, inst: [], notes: 0 });
+    const g = map.get(r.trackIdx);
+    g.inst.push(r); g.notes += r.notes.length;
+  }
+  return [...map.values()].sort((a,b) => a.trackIdx - b.trackIdx);
+}
+function renderTrackPane() {
+  const gs = trackGroups();
+  ui.trackList.innerHTML = "";
+  for (const g of gs) {
+    const el = document.createElement("div");
+    el.className = "trackItem" + (g.trackIdx === activeTrackIdx ? " active" : "");
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = `hsl(${g.hue},65%,58%)`;
+    const txt = document.createElement("span");
+    txt.innerHTML = `<span>${escapeHtml(g.name)}${g.inst.length > 1 ? ` <i>(${g.inst.length}段)</i>` : ""}</span>` +
+      `<span class="sub">${g.notes}ノート${g.inst.some(i => i.mute) ? " · muteあり" : ""}</span>`;
+    const cnt = document.createElement("span");
+    cnt.className = "cnt"; cnt.textContent = g.trackIdx === activeTrackIdx ? "●" : "";
+    el.append(sw, txt, cnt);
+    el.onclick = () => { activeTrackIdx = g.trackIdx; selSet = new Set(); sel = null; hideEditor(); renderTrackPane(); draw(); };
+    ui.trackList.appendChild(el);
+  }
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ==================== audio (square wave preview) ==================== */
+let AC = null;
+let sched = { notes: [], idx: 0, startTime: 0, startBlick: 0, timer: null, live: [] };
+function audioCtx() { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); return AC; }
+function noteFreq(p, detune) { return 440 * Math.pow(2, (p - 69 + (detune||0)/100) / 12); }
+function collectPlayNotes(fromB) {
+  const out = [];
+  for (const r of rows) {
+    if (r.mute) continue;
+    for (const n of r.notes) {
+      const onset = n.onset + r.blickOffset;
+      if (onset + n.duration > fromB) out.push({ onset, dur: n.duration, p: n.pitch + r.pitchOffset, detune: n.detune });
+    }
+  }
+  out.sort((a,b) => a.onset - b.onset);
+  return out;
+}
+function scheduleNote(sec, durSec, freq) {
+  const ac = audioCtx();
+  const osc = ac.createOscillator(), g = ac.createGain();
+  osc.type = "square"; osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, sec);
+  g.gain.linearRampToValueAtTime(0.09, sec + 0.005);
+  g.gain.setValueAtTime(0.09, Math.max(sec + 0.005, sec + durSec - 0.03));
+  g.gain.linearRampToValueAtTime(0, sec + durSec);
+  osc.connect(g).connect(ac.destination);
+  osc.start(sec); osc.stop(sec + durSec + 0.02);
+  sched.live.push({ osc, g });
+}
+function lookaheadSec() { return 0.25; }
+function pump() {
+  const ac = audioCtx();
+  // horizon は「startBlick からの相対 elapsed」を tempo map で絶対 blick に変換する（blickOfは曲頭基準なので使わない）
+  const horizon = blickAtElapsed(ac.currentTime - sched.startTime + lookaheadSec());
+  while (sched.idx < sched.notes.length && sched.notes[sched.idx].onset < horizon) {
+    const n = sched.notes[sched.idx++];
+    const sec = sched.startTime + secOf(n.onset) - secOf(sched.startBlick);
+    scheduleNote(Math.max(ac.currentTime + 0.005, sec), secOf(n.onset + n.dur) - secOf(n.onset), noteFreq(n.p, n.detune));
+  }
+  // metronome (incremental scheduling)
+  if (metroOn) {
+    if (pump._mReset !== sched.startBlick) { pump._mIdx = 0; pump._mReset = sched.startBlick; }
+    if (pump._mIdx === undefined) pump._mIdx = 0;
+    const beats = [];
+    for (const bl of barLines()) {
+      const beat = measureBlick(bl.m) / bl.m.numerator;
+      for (let i = 0; i < bl.m.numerator; i++) beats.push(bl.b + i * beat);
+    }
+    beats.sort((a,b) => a-b);
+    while (pump._mIdx < beats.length && beats[pump._mIdx] < horizon) {
+      const b = beats[pump._mIdx++];
+      if (b < sched.startBlick) continue;
+      const sec = sched.startTime + secOf(b) - secOf(sched.startBlick);
+      if (sec >= ac.currentTime - 0.02) {
+        const ms = meterMarks();
+        const barB = measureBlick(ms[0]);
+        clickSound(Math.max(ac.currentTime + 0.005, sec), ((b % barB) + barB) % barB < 1);
+      }
+    }
+  }
+  playhead = blickAtElapsed(ac.currentTime - sched.startTime);  // blickAtElapsedは絶対位置(startBlick起点積算)を返す。二重加算禁止
+  applyFollow();      // 追従ONなら表示域を再生位置へ
+  draw();
+  if (playhead > endBlick) {
+    stopPlayback();   // 曲終端：ヘッドは終端に留まる
+  }
+}
+// elapsed seconds -> blick from startBlick (integrating tempo map)
+function blickAtElapsed(elapsed) {
+  const t = tempoMarks();
+  let b = sched.startBlick, remain = elapsed;
+  for (let i = 0; i < t.length; i++) {
+    const segStart = t[i].position, segEnd = i+1 < t.length ? t[i+1].position : Infinity;
+    if (b < segStart) b = segStart;
+    if (b >= segEnd) continue;
+    const bps = t[i].bpm * QUARTER / 60; // blicks per second in this segment
+    const segRemainBlick = (segEnd === Infinity) ? Infinity : segEnd - b;
+    const segRemainSec = (segEnd === Infinity) ? Infinity : segRemainBlick / bps;
+    if (remain <= segRemainSec) return b + remain * bps;
+    b += segRemainBlick; remain -= segRemainSec;
+  }
+  return b;
+}
+function startPlayback() {
+  if (playing) return;
+  const ac = audioCtx(); if (ac.state === "suspended") ac.resume();
+  // stopMode==="return" なら停止位置からではなく「前回の再生開始位置」から再スタート
+  if (stopMode === "return" && lastStartBlick !== null) playhead = lastStartBlick;
+  lastStartBlick = playhead;
+  sched = { notes: collectPlayNotes(playhead), idx: 0, startTime: ac.currentTime + 0.05, startBlick: playhead, live: [], timer: null };
+  playing = true;
+  ui.playBtn.textContent = "⏸";
+  sched.timer = setInterval(pump, 40); pump();
+}
+function stopPlayback() {
+  playing = false;
+  if (sched.timer) clearInterval(sched.timer);
+  sched.timer = null;
+  const ac = AC;
+  if (ac) for (const l of sched.live) { try { l.g.gain.cancelScheduledValues(ac.currentTime); l.g.gain.setValueAtTime(0, ac.currentTime); l.osc.stop(ac.currentTime + 0.01); } catch(e){} }
+  sched.live = [];
+  ui.playBtn.textContent = "▶";
+  draw();   // 停止＝一時停止: ヘッドはその場に留まる
+}
+function restartPlayback() { stopPlayback(); startPlayback(); }
+let _toggleLock = false;
+function togglePlay() {
+  // キーリピートや連打による多重実行ガード（start/stop直後120msは無視）
+  if (_toggleLock) return;
+  _toggleLock = true;
+  setTimeout(() => { _toggleLock = false; }, 120);
+  if (playing) { // pause: keep playhead, keep sched position
+    const ac = audioCtx();
+    playhead = blickAtElapsed(ac.currentTime - sched.startTime);  // 絶対位置(二重加算なし)
+    stopPlayback();   // 一時停止: ヘッドはその場に
+  } else {
+    // 「再生位置で停止 → 再度Space」ならその位置から再開
+    startPlayback();
+  }
+}
+ui.playBtn.onclick = () => { if (!_toggleLock) togglePlay(); };
+ui.stopBtn.onclick = () => { stopPlayback(); };  // ■: 一時停止（その場で止まる）
+
+/* ==================== file io ==================== */
+function readFile(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      // svp files may contain trailing NUL padding (v1 era); strip before parse
+      const json = JSON.parse(r.result.replace(/[\u0000]+$/, ""));
+      if (parseProject(json, file.name)) {
+        scrollT = 0; draw();
+        activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
+        selSet = new Set(); sel = null;
+        hideEditor(); renderTrackPane();
+        const trkN = new Set(rows.map(r => r.trackName)).size;
+        setStatus(`${file.name} — ${trkN}トラック / ${rows.length}インスタンス / ${rows.reduce((a,r)=>a+r.notes.length,0)}ノート / BPM ${tempoMarks()[0].bpm}`);
+      }
+    } catch (err) { setStatus("読み込みエラー: " + err.message); }
+  };
+  r.readAsText(file, "utf-8");
+}
+ui.openBtn.onclick = () => ui.fileInput.click();
+ui.fileInput.onchange = () => { if (ui.fileInput.files[0]) readFile(ui.fileInput.files[0]); };
+window.addEventListener("dragover", e => { e.preventDefault(); ui.drop.style.display = "flex"; });
+window.addEventListener("dragleave", e => { if (e.target === document.documentElement) ui.drop.style.display = "none"; });
+window.addEventListener("drop", e => {
+  e.preventDefault(); ui.drop.style.display = "none";
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.toLowerCase().endsWith(".svp")) readFile(f);
+});
+ui.saveBtn.onclick = () => {
+  if (!project) return;
+  const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
+  const a = document.createElement("a");
+  const base = fileName.replace(/\.svp$/i, "");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${base}_edited.svp`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  dirty = false;
+  setStatus("書き出しました: " + a.download);
+};
+
+/* ==================== pane resize (track width + vertical splits) ==================== */
+function makeResizer(handle, apply, cursorActive) {
+  let dragging = false;
+  handle.addEventListener("mousedown", e => { e.preventDefault(); dragging = true; handle.classList.add("active"); document.body.style.cursor = cursorActive; });
+  window.addEventListener("mousemove", e => { if (dragging) { apply(e); resize(); } }); // resize()でcanvasバッキング再計算（伸び防止）
+  window.addEventListener("mouseup", () => {
+    if (dragging) { dragging = false; handle.classList.remove("active"); document.body.style.cursor = ""; resize(); }
+  });
+}
+const stage = document.getElementById("stage");
+const miniWrap = document.getElementById("miniWrap");
+const lyricWrap = document.getElementById("lyricWrap");
+makeResizer(
+  document.getElementById("paneResize"),
+  e => {
+    const rect = stage.getBoundingClientRect();
+    const w = Math.max(140, Math.min(500, e.clientX - rect.left));
+    document.getElementById("trackPane").style.width = w + "px";
+  },
+  "col-resize"
+);
+makeResizer(
+  document.getElementById("vResize1"),
+  e => {
+    const rect = document.getElementById("rollWrap").getBoundingClientRect();
+    const h = Math.max(20, Math.min(200, e.clientY - rect.top));
+    miniWrap.style.height = h + "px";
+  },
+  "row-resize"
+);
+makeResizer(
+  document.getElementById("vResize2"),
+  e => {
+    const rect = document.getElementById("rollWrap").getBoundingClientRect();
+    const h = Math.max(20, Math.min(300, rect.bottom - e.clientY));
+    lyricWrap.style.height = h + "px";
+  },
+  "row-resize"
+);
+// track pane collapse toggle (double-click on resizer)
+const paneToggle = document.createElement("button");
+paneToggle.id = "paneToggle";
+paneToggle.title = "トラックペイン開閉";
+paneToggle.textContent = "◀";
+paneToggle.onclick = () => {
+  const tp = document.getElementById("trackPane");
+  const rs = document.getElementById("paneResize");
+  const collapsed = tp.classList.toggle("collapsed");
+  rs.style.display = collapsed ? "none" : "";
+  paneToggle.textContent = collapsed ? "▶" : "◀";
+  draw();
+};
+stage.insertBefore(paneToggle, document.getElementById("trackPane").nextSibling);
+document.getElementById("paneResize").addEventListener("dblclick", () => paneToggle.click());
+
+/* ==================== boot ==================== */
+resize();
+loadPrefs();
+loadAutosave();
+</script>
+</body>
+</html>
