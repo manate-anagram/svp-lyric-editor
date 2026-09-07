@@ -28,7 +28,7 @@ No build step, no server, fully offline — **your files never leave your browse
 
 ## Quick Start / 使い方
 
-**デモを試すだけなら**: [デモサイト](https://manate-anagram.github.io/svp-lyric-editor/?demo) を開く（サンプル曲が読み込まれた状態で起動）
+**デモを試すだけなら**: [デモサイト](https://manate-anagram.github.io/svp-lyric-editor/?demo) を開く（デモソングが読み込まれた状態で起動）
 
 **自分の .svp を編集するなら**:
 
@@ -74,7 +74,7 @@ No build step, no server, fully offline — **your files never leave your browse
 ```
 svp-lyric-editor/
 ├── index.html                # 本体（HTML+CSS+JS すべてこの1ファイル）
-├── demo.svp                   # デモ用サンプル（?demo クエリで自動読込される）
+├── demo.svp                   # デモソング「Patchwork」(東方Project二次創作・?demoで自動読込)
 ├── README.md
 ├── LICENSE
 └── docs/
@@ -104,6 +104,16 @@ svp-lyric-editor/
 - ピッチ曲線 (`parameters.pitchDelta`) の表示・編集は未対応
 - 再生音は矩形波のみ（SoundFont 連携なし）
 - 音声レンダリングは不可（編集結果は .svp として書き出し、SynthV Studio でレンダリング）
+
+## Demo song / デモソング
+
+同梱の `demo.svp` は下記の作品を1番のみに編集したものです（デモ表示用）。
+
+- **Patchwork**（東方Project 二次創作ボーカルアレンジ）
+  - 原曲: 古きユアンシェン / デザイアドライブ（上海アリス幻樂団 / ZUN）
+  - 編曲・作詞: manate / イラスト: とっち
+  - ボーカル: 花隈千冬 (Synthesizer V) / BPM 174
+  - 元作品ページ: https://anagram-monogram.com/works/21-patchwork/
 
 ## License / ライセンス
 
