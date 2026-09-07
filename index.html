@@ -1596,7 +1596,7 @@ paneToggle.onclick = () => {
   const collapsed = tp.classList.toggle("collapsed");
   rs.style.display = collapsed ? "none" : "";
   paneToggle.textContent = collapsed ? "▶" : "◀";
-  draw();
+  resize();  // canvasバッキング再計算（ペイン開閉で幅が変わるため伸び防止）
 };
 stage.insertBefore(paneToggle, document.getElementById("trackPane").nextSibling);
 document.getElementById("paneResize").addEventListener("dblclick", () => paneToggle.click());
