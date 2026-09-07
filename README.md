@@ -16,9 +16,12 @@ No build step, no server, fully offline — **your files never leave your browse
   - ノートをダブルクリック or 右クリック → ノート脇のポップアップで入力
   - `Tab` / `Shift+Tab` で次のノートへ連続入力
   - **まとめ歌詞**: 複数ノート選択 → 一括で歌詞を順番割当（スペース/改行区切り・1文字ずつの切替）
-  - **音素自動生成**: かな歌詞 → Synthesizer V 公式ローマ字音素表(ROMAJI)準拠で自動変換
+  - **音素自動生成**: かな歌詞 → Synthesizer Vローマ字音素表(JapaneseROMAJI)準拠で自動変換
 - **再生プレビュー** — Web Audio API の矩形波で試聴（全トラック・メトロノーム・追従スクロール付き）
-- **全体ビュー / 歌詞ストリップ** — 曲全体の俯瞰と集中歌詞編集用の帯表示
+- **3つのビュー構成**（リサイズ可能 / 非表示切替あり）
+  - **ピアノロール**（メイン）— ノート編集の中心。縦軸=音程・横軸=時間
+  - **全体ビュー** — 曲全体を俯瞰。クリック/ドラッグでメインの表示範囲を移動
+  - **歌詞ストリップ** — 全ノートの歌詞を帯状に表示し、追従スクロールで再生中の歌詞を確認・編集
 - **複数トラック対応** — Synthesizer V 1 / 2 の .svp 構造に対応、トラックごとに色分け
 - **自動保存** — 編集内容を localStorage に自動保存（誤リロードに備える）
 - **svp 書き出し** — 編集後そのまま `.svp` をダウンロード → Synthesizer V Studio で開ける
@@ -70,7 +73,6 @@ svp-lyric-editor/
 ├── README.md
 ├── LICENSE
 └── docs/
-    ├── phoneme-japanese-romaji.json   # Synthesizer V公式ローマ字音素表 (JapaneseROMAJI)
     └── screenshot.png                 # スクリーンショット
 ```
 
