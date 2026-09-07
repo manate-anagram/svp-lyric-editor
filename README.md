@@ -10,7 +10,7 @@ No build step, no server, fully offline — **your files never leave your browse
 
 ## Features / 主な機能
 
-- **完全ブラウザ完結** — `index.html` を開いて `.svp` をドラッグ&ドロップするだけ
+- **完全ブラウザ完結** — `index.html` を開いて `.svp` / `.mid` をドラッグ&ドロップするだけ
 - **ピアノロール編集** — ノート追加 / 移動 / 長さ変更 / 削除 / 複数選択 / Undo・Redo
 - **歌詞編集**
   - ノートをダブルクリック or 右クリック → ノート脇のポップアップで入力
@@ -23,17 +23,21 @@ No build step, no server, fully offline — **your files never leave your browse
   - **全体ビュー** — 曲全体を俯瞰。クリック/ドラッグでメインの表示範囲を移動
   - **歌詞ストリップ** — 全ノートの歌詞を帯状に表示し、追従スクロールで再生中の歌詞を確認・編集
 - **複数トラック対応** — Synthesizer V 1 / 2 の .svp 構造に対応、トラックごとに色分け
-- **自動保存** — 編集内容を localStorage に自動保存（誤リロードに備える）
+  - **ミュート / ソロ** — 各トラックの M / S ボタンで再生を制御（ミュートは `.svp` にも反映）
+  - **トラック追加 / 削除** — 追加したトラックは空の状態からダブルクリックでノートを入力（削除は Ctrl+Z で復元可）
+- **MIDI読み込み** — `.mid` / `.midi` を読込（BPM を手動指定・初期値120・4/4扱い）。チャンネルごとにトラック化
+- **スマホ対応** — 狭い画面ではトラックペインを隠して上部セレクタに置換、**歌詞ストリップ優先**レイアウト（タップで歌詞編集・シーク可能）
+- **自動保存** — 編集内容を localStorage に自動保存（**単一キー上書き**・手動保存で消去。誤リロードに備える）
 - **svp 書き出し** — 編集後そのまま `.svp` をダウンロード → Synthesizer V Studio で開ける（読み込んだ形式・バージョンのまま保存）
 
 ## Quick Start / 使い方
 
-**デモを試すだけなら**: [デモサイト](https://manate-anagram.github.io/svp-lyric-editor/?demo) を開く（デモソングが読み込まれた状態で起動）
+**デモを試すだけなら**: [デモサイト](https://manate-anagram.github.io/svp-lyric-editor/?demo) を開く — いきなり読み込まず、**「svp / midi を開く」または「デモを読み込む」ボタン**から選択して起動する
 
 **自分の .svp を編集するなら**:
 
 1. [index.html](./index.html) をダウンロードしてブラウザで開く（Chrome / Edge / Firefox / Safari 推奨）
-2. `.svp` ファイルをドラッグ&ドロップ（またはツールバーの「開く」ボタン）
+2. `.svp`（または `.mid`）ファイルをドラッグ&ドロップ（またはツールバーの「開く」ボタン）。MIDI は読込時に BPM を指定
 3. 編集して「svp書き出し」→ `<元ファイル名>_edited.svp` がダウンロードされる
 4. Synthesizer V Studio で開いてレンダリング
 
@@ -45,7 +49,9 @@ No build step, no server, fully offline — **your files never leave your browse
 
 | 操作 | キー / マウス |
 |------|------------|
-| トラック切替 | 左ペインのトラックをクリック |
+| トラック切替 | 左ペインのトラックをクリック（スマホは上部セレクタ） |
+| ミュート / ソロ | トラックの **M** / **S** ボタン（スマホは上部 M / S） |
+| トラック追加 / 削除 | トラックペイン上部の **＋** / **🗑**（削除は確認ダイアログあり） |
 | 範囲選択 | 空白ドラッグ（マーキー）/ `Shift+クリック` で追加・解除 |
 | ノート追加 | 空白部分ダブルクリック（選択トラックに追加） |
 | 歌詞/音素編集 | ノート**ダブルクリック or 右クリック** → ノート脇のポップアップ |
@@ -74,7 +80,7 @@ No build step, no server, fully offline — **your files never leave your browse
 ```
 svp-lyric-editor/
 ├── index.html                # 本体（HTML+CSS+JS すべてこの1ファイル）
-├── demo.svp                   # デモソング「Patchwork」(東方Project二次創作・?demoで自動読込)
+├── demo.svp                   # デモソング「Patchwork」(東方Project二次創作・?demoで読込ボタンを表示)
 ├── README.md
 ├── LICENSE
 └── docs/
@@ -94,12 +100,18 @@ svp-lyric-editor/
 
 - Synthesizer V Studio `.svp`
   - **Synthesizer V 1** 形式（notes が `tracks[].mainGroup.notes` に直接入る構造）と **Synthesizer V 2** 形式（notes が `library[]` にあり `tracks[].mainRef/groups[]` が参照する構造）の両方を**実ファイルで検証済み**
+- Standard MIDI File `.mid` / `.midi`（PPQ 形式・読込時 BPM 指定。チャンネルごとにトラック化・トラック名メタ 0x03 を反映）
 - 複数トラック（`tracks[].mainRef/groups[]` 参照ごとに1インスタンスとして描画。`blickAbsoluteBegin/blickOffset/pitchOffset/mute` 反映）
 - テンポマップ (`time.tempo`)・拍子 (`time.meter`)、複数小節変更グリッド
 - 末尾NULパディング付き svp（Synthesizer V 1 世代）も自動読込
 - 保存（書き出し）時は**読み込んだ JSON 構造をそのまま保持** — SynthV 1 形式で読めば SynthV 1 形式、SynthV 2 形式で読めば SynthV 2 形式のまま書き出される（バージョン変換は行わない）
 
-## Known limitations / 既知の制限 (Phase 2 candidates)
+## Known limitations / 既知の制限
+
+- MIDI 読み込みは歌詞なしで取り込む（歌詞は本ツールで入力）。SMPTE 時間形式の MIDI は未対応
+- 追加した空トラックは v1 相当（mainGroup.notes）として保存される
+
+(Phase 2 candidates)
 
 - ピッチ曲線 (`parameters.pitchDelta`) の表示・編集は未対応
 - 再生音は矩形波のみ（SoundFont 連携なし）

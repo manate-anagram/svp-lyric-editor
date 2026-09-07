@@ -13,6 +13,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
     font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 13px; }
+  body { display: flex; flex-direction: column; }
   #toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel);
     border-bottom: 1px solid #000; flex-wrap: wrap; user-select: none; }
   #toolbar button, #toolbar input, #toolbar select {
@@ -26,7 +27,7 @@
   #status { margin-left: auto; color: #9aa1ad; }
   #drop-overlay { position: fixed; inset: 0; background: rgba(79,140,255,.15); border: 3px dashed var(--accent);
     display: none; align-items: center; justify-content: center; font-size: 22px; z-index: 99; pointer-events: none; }
-  #stage { position: relative; height: calc(100% - 38px); display: flex; }
+  #stage { position: relative; flex: 1; min-height: 0; display: flex; }
   #trackPane { width: 180px; min-width: 140px; background: var(--panel); border-right: 1px solid #000;
     overflow-y: auto; user-select: none; padding: 6px 4px; }
   #paneResize { width: 5px; flex: none; cursor: col-resize; background: transparent; transition: background .15s; }
@@ -49,7 +50,7 @@
   #vResize1:hover, #vResize2:hover, #vResize1.active, #vResize2.active { background: var(--accent); }
   #cvWrap { position: relative; flex: 1; min-height: 0; }
   #lyricWrap { position: relative; height: 84px; flex: none; background: var(--panel); border-top: 1px solid #000; }
-  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   #hint { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center;
     justify-content: center; color: #9aa1ad; text-align: center; z-index: 5; }
   #hint .big { font-size: 40px; } #hint code { background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
@@ -67,6 +68,53 @@
   #edPhonAuto:hover { color: var(--accent); }
   /* 歌詞テキストエリア: 長文入力時に行を増やして広く使える */
   #rowLyric textarea { min-height: 20px; line-height: 1.5; }
+  /* ---- 初回ロード用ヒントボタン ---- */
+  #hint button { background: var(--panel2); color: var(--text); border: 1px solid #3a3f4c; border-radius: 6px;
+    padding: 8px 16px; font-size: 14px; cursor: pointer; }
+  #hint button:hover { background: #2e323d; }
+  #hint button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #hintActions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+  /* ---- トラックペイン ヘッダボタン / M/Sボタン ---- */
+  #trackPaneHeader { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px 2px 8px; }
+  #trackPaneHeader h3 { padding: 0 !important; }
+  #trackPaneHeader .tb { display: flex; gap: 2px; }
+  #trackPaneHeader button { background: var(--panel2); color: #9aa1ad; border: 1px solid #3a3f4c;
+    border-radius: 4px; font-size: 11px; width: 24px; height: 20px; cursor: pointer; line-height: 1; padding: 0; }
+  #trackPaneHeader button:hover { color: #fff; background: #2e323d; }
+  #trackPaneHeader button:disabled { opacity: .4; cursor: default; }
+  .trackItem .mbtn, .trackItem .sbtn { background: var(--panel2); border: 1px solid #3a3f4c; color: #6a7280;
+    border-radius: 4px; font-size: 9px; width: 16px; height: 16px; line-height: 1; cursor: pointer; padding: 0; flex: none; }
+  .trackItem .mbtn.on { background: #7a2e33; border-color: #ff5d7a; color: #fff; }
+  .trackItem .sbtn.on { background: #8a6d1f; border-color: #ffd34d; color: #fff; }
+  /* ---- モーダル ---- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center;
+    justify-content: center; z-index: 100; }
+  .modal { background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px; padding: 16px 18px;
+    min-width: 270px; max-width: 92vw; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+  .modal h3 { font-size: 14px; }
+  .modal p { color: #9aa1ad; font-size: 12px; line-height: 1.6; }
+  .modal label { display: flex; gap: 8px; align-items: center; color: var(--text); }
+  .modal input { background: #14161b; color: var(--text); border: 1px solid #3a3f4c; border-radius: 4px; padding: 4px 8px; width: 90px; }
+  .modalBtns { display: flex; gap: 8px; justify-content: flex-end; }
+  .modalBtns button { background: var(--panel2); color: var(--text); border: 1px solid #3a3f4c; border-radius: 5px; padding: 5px 14px; cursor: pointer; }
+  .modalBtns button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* ---- モバイル ---- */
+  #mobileBar { display: none; align-items: center; gap: 6px; padding: 4px 10px; background: var(--panel);
+    border-bottom: 1px solid #000; flex-wrap: wrap; user-select: none; }
+  #mobileBar select, #mobileBar button { background: var(--panel2); color: var(--text); border: 1px solid #3a3f4c;
+    border-radius: 5px; padding: 3px 8px; font-size: 13px; }
+  #mobileBar button.onM { background: #7a2e33; border-color: #ff5d7a; color: #fff; }
+  #mobileBar button.onS { background: #8a6d1f; border-color: #ffd34d; color: #fff; }
+  #mobileBar #trackSel { max-width: 42vw; }
+  #mobileBar button:disabled { opacity: .4; }
+  @media (max-width: 860px) {
+    #trackPane, #paneResize, #paneToggle { display: none !important; }
+    #vResize1, #vResize2 { display: none !important; }
+    #mobileBar { display: flex; }
+    #miniWrap { height: 30px !important; }
+    #lyricWrap { height: 44% !important; min-height: 110px; }
+    #status { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
 </style>
 </head>
 <body>
@@ -95,10 +143,23 @@
   <button id="stopModeBtn" disabled title="停止後の再開位置: その場から / 前回の再生開始位置から">■停止: その場で停止</button>
   <span id="status">未読込</span>
   <span id="autosaveTip" style="display:none;color:#6a7280;font-size:10px;" title="編集内容を自動でブラウザに保存しています">・自動保存中</span>
-  <input type="file" id="fileInput" accept=".svp" style="display:none">
+  <input type="file" id="fileInput" accept=".svp,.mid,.midi" style="display:none">
+</div>
+<div id="mobileBar">
+  <select id="trackSel" title="トラック切替" disabled></select>
+  <button id="mMuteBtn" title="ミュート切替" disabled>M</button>
+  <button id="mSoloBtn" title="ソロ切替" disabled>S</button>
+  <button id="mAddBtn" title="トラック追加" disabled>＋</button>
+  <button id="mDelBtn" title="アクティブトラックを削除" disabled>🗑</button>
 </div>
 <div id="stage">
-  <div id="trackPane"><h3>TRACKS</h3><div id="trackList"></div></div>
+  <div id="trackPane">
+    <div id="trackPaneHeader"><h3>TRACKS</h3><div class="tb">
+      <button id="addTrackBtn" title="トラックを追加" disabled>＋</button>
+      <button id="delTrackBtn" title="アクティブトラックを削除" disabled>🗑</button>
+    </div></div>
+    <div id="trackList"></div>
+  </div>
   <div id="paneResize"></div>
   <div id="rollWrap">
     <div id="miniWrap"><canvas id="cvMini"></canvas></div>
@@ -107,9 +168,13 @@
       <canvas id="cv"></canvas>
       <div id="hint">
         <div class="big">🎹</div>
-        <div><b>.svp をドラッグ&amp;ドロップ</b> または「開く」ボタンで読み込み</div>
+        <div><b>.svp / .mid をドラッグ&amp;ドロップ</b> またはボタンで読み込み</div>
         <div>選択: ドラッグで範囲選択 / <code>Shift+クリック</code> 追加選択 / ダブルクリック=追加・歌詞 / <code>Tab</code> 次の歌詞へ / <code>Del</code> 削除 / <code>Ctrl+Z</code> 元に戻す / <code>Space</code> 再生 / <code>Ctrl+C/V</code> コピペ</div>
         <div>スクロール: ホイール横 / <code>Shift+ホイール</code> 縦(音程) / <code>Ctrl+ホイール</code> ズーム</div>
+        <div id="hintActions">
+          <button id="hintOpenBtn" class="primary" style="display:none">📂 svp / midi を開く</button>
+          <button id="hintDemoBtn" style="display:none">🎵 デモを読み込む</button>
+        </div>
       </div>
     </div>
     <div id="vResize2"></div>
@@ -123,6 +188,14 @@
       </div>
       <div class="edHint" id="edHintMain">Enter確定 / Tab次へ / Shift+Tab前へ / Esc閉じる</div>
     </div>
+  </div>
+</div>
+<div id="midiDlg" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h3>🎹 MIDI 読み込み</h3>
+    <p>MIDIファイルにはプロジェクトのテンポ情報はありません。読み込むBPMを指定してください（拍子は 4/4 として扱います）。</p>
+    <label>BPM <input id="midiBpmInput" type="number" step="1" min="20" max="400" value="120"></label>
+    <div class="modalBtns"><button id="midiOkBtn" class="primary">読み込む</button><button id="midiCancelBtn">キャンセル</button></div>
   </div>
 </div>
 <div id="drop-overlay">ドロップで読み込み</div>
@@ -154,6 +227,8 @@ let snap = 176400000;
 let undoStack = [];
 let redoStack = [];
 let dirty = false;
+let trackS = [];               // トラックごとのソロ状態（エディタ専用・svpには書かない）
+let hintDemoQ = false;         // boot時に?demo付きで開かれたか（ヒントにデモボタンを出す）
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -165,6 +240,13 @@ const ui = { openBtn:$("openBtn"), saveBtn:$("saveBtn"), playBtn:$("playBtn"), s
   edPhonAuto: $("edPhonAuto"), edSplit: $("edSplit"), lyricSplit: $("lyricSplit") };
 const cvMini = document.getElementById("cvMini"), ctxMini = cvMini.getContext("2d");
 const cvLyric = document.getElementById("cvLyric"), ctxLyric = cvLyric.getContext("2d");
+// 追加UI: ヒント読込ボタン / トラックヘッダ / モバイルバー / MIDIモーダル
+const uiM = {
+  hintOpenBtn: $("hintOpenBtn"), hintDemoBtn: $("hintDemoBtn"),
+  addTrackBtn: $("addTrackBtn"), delTrackBtn: $("delTrackBtn"),
+  trackSel: $("trackSel"), mMuteBtn: $("mMuteBtn"), mSoloBtn: $("mSoloBtn"), mAddBtn: $("mAddBtn"), mDelBtn: $("mDelBtn"),
+  midiDlg: $("midiDlg"), midiBpm: $("midiBpmInput"), midiOk: $("midiOkBtn"), midiCancel: $("midiCancelBtn")
+};
 
 /* ==================== tempo / meter helpers ==================== */
 function tempoMarks() {
@@ -247,11 +329,33 @@ function parseProject(json, name, opts = {}) {
         blickOffset: (ref.blickAbsoluteBegin || 0) + (ref.blickOffset || 0),
         pitchOffset: ref.pitchOffset || 0,
         mute: !!ref.mute,
+        _ref: ref,
         hue: (210 + trackIdx * 137.5) % 360,
       });
       instIdx++;
     }
     trackIdx++;
+  }
+  // ノートが空のトラック（トラック追加直後・空ボイス）も空rowとして確保し、後からノート追加できるようにする
+  for (let i = 0; i < (project.tracks || []).length; i++) {
+    if (rows.some(r => r.trackIdx === i)) continue;
+    const tr0 = project.tracks[i];
+    if (!tr0) continue;
+    const rf0 = [tr0.mainRef, ...(tr0.groups || [])].filter(Boolean).find(rf => {
+      if (rf.groupID && libMap.has(rf.groupID)) return true;
+      return !rf.groupID && Array.isArray(tr0.mainGroup && tr0.mainGroup.notes);
+    });
+    if (!rf0) continue;
+    const holder0 = (rf0.groupID && libMap.has(rf0.groupID)) ? libMap.get(rf0.groupID) : tr0.mainGroup;
+    if (!holder0 || !Array.isArray(holder0.notes)) continue;
+    rows.push({
+      name: tr0.name || `Track ${i+1}`, trackName: tr0.name || `Track ${i+1}`, trackIdx: i,
+      uuid: holder0.uuid, holder: holder0, notes: holder0.notes,
+      blickOffset: (rf0.blickAbsoluteBegin || 0) + (rf0.blickOffset || 0),
+      pitchOffset: rf0.pitchOffset || 0,
+      mute: !!rf0.mute, _ref: rf0,
+      hue: (210 + i * 137.5) % 360,
+    });
   }
   if (!rows.length) { setStatus("ノートが見つからない（mainGroup/library に notes なし）"); return false; }
   let maxEnd = 0;
@@ -272,7 +376,7 @@ function parseProject(json, name, opts = {}) {
     zoomY = Math.max(0.6, Math.min(2, cv.clientHeight / Math.max(1,(hi-lo+12)) / ROW_H));
     sel = null; selSet = new Set(); playhead = 0;
   }
-  if (!opts.keepHistory) { undoStack = []; redoStack = []; }
+  if (!opts.keepHistory) { undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); }
   dirty = false;
   ui.saveBtn.disabled = ui.playBtn.disabled = ui.stopBtn.disabled = false;
   ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false; ui.stopModeBtn.disabled = false;
@@ -391,7 +495,8 @@ function drawMain() {
       if (playingNote) break;
     }
   }
-  for (const r of rows) drawRow(r, t0, t1, viewH, r.trackIdx === activeTrackIdx, playingNote);
+  const soloAny = trackS.some(Boolean);
+  for (const r of rows) drawRow(r, t0, t1, viewH, r.trackIdx === activeTrackIdx, playingNote, soloAny && !trackS[r.trackIdx]);
   ctx.restore();
 
   // ---- marquee
@@ -529,6 +634,9 @@ function drawLyric() {
     if (c > best) { best = c; row = r; }
   }
   if (!row) return;
+  // 高さに応じて箱を拡大（モバイルで歌詞ストリップを優先表示したとき読みやすく）
+  const boxH = Math.max(24, Math.min(40, Math.floor(H * 0.52)));
+  const fs = Math.min(15, Math.max(10, Math.round(boxH * 0.45)));
   const midY = H / 2;
   // time grid ticks
   ctxLyric.strokeStyle = "#2a2e38";
@@ -551,7 +659,7 @@ function drawLyric() {
     // box — ピアノロール本体と同系色（トラックhue、無歌詞は暗め）
     ctxLyric.fillStyle = isPlaying ? "#ffd34d" : isFocus ? "#ffffff" : `hsla(${row.hue},65%,${isCont?45:60}%,${isSel?1:0.95})`;
     ctxLyric.beginPath();
-    ctxLyric.roundRect(x + 1, midY - 13, Math.max(6, w - 2), 26, 4);
+    ctxLyric.roundRect(x + 1, midY - boxH / 2, Math.max(6, w - 2), boxH, 4);
     ctxLyric.fill();
     if (isSel && !isFocus) { // batch-selected: white outline (本体と同様)
       ctxLyric.strokeStyle = "#ffffff"; ctxLyric.lineWidth = 1.2;
@@ -559,8 +667,8 @@ function drawLyric() {
     }
     if (w > 8 && disp) {
       ctxLyric.fillStyle = "#0d0f14";
-      ctxLyric.font = "12px sans-serif";
-      ctxLyric.fillText(disp, x + 4, midY + 4, w - 6);
+      ctxLyric.font = fs + "px sans-serif";
+      ctxLyric.fillText(disp, x + 4, midY + fs * 0.35 + 1, w - 6);
     }
   }
   // playhead
@@ -629,10 +737,94 @@ cvLyric.addEventListener("dblclick", e => {
     openEditor("lyric");
   }
 });
-function drawRow(r, t0, t1, viewH, isActive, playingNote) {
+/* ---- タッチ（スマホ）: 歌詞ストリップ ---- */
+let lyrTouch = null;
+cvLyric.addEventListener("touchstart", e => {
+  if (!project || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  const h = lyricHit({ clientX: t.clientX, clientY: t.clientY });
+  lyrTouch = { x0: t.clientX, y0: t.clientY, h, moved: false, grabRel: null };
+  if (h && h.note) {
+    if (!selSet.has(h.note)) selSet = new Set([h.note]);
+    sel = { row: h.row, note: h.note };
+    draw();
+  }
+  hideEditor();
+}, { passive: true });
+cvLyric.addEventListener("touchmove", e => {
+  if (!lyrTouch || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  if (Math.abs(t.clientX - lyrTouch.x0) + Math.abs(t.clientY - lyrTouch.y0) > 10) lyrTouch.moved = true;
+  const h = lyrTouch.h;
+  if (h && h.note && lyrTouch.moved) {
+    const rect = cvLyric.getBoundingClientRect();
+    const b = scrollT + px2blick(t.clientX - rect.left - KEYS_W);
+    const relB = b - h.row.blickOffset;
+    if (lyrTouch.grabRel === null) lyrTouch.grabRel = snapBlick(h.b - h.row.blickOffset) - h.note.onset;
+    const newOnset = Math.max(0, snapBlick(relB) - lyrTouch.grabRel);
+    if (newOnset !== h.note.onset) { h.note.onset = newOnset; lyrTouch.moved = true; dirty = true; draw(); }
+  }
+}, { passive: true });
+cvLyric.addEventListener("touchend", e => {
+  if (!lyrTouch) return;
+  const lt = lyrTouch;
+  lyrTouch = null;
+  if (!lt.h) return;
+  if (!lt.moved) {
+    if (lt.h.note) {
+      selSet = new Set([lt.h.note]);
+      sel = { row: lt.h.row, note: lt.h.note };
+      draw();
+      openEditor("lyric");
+    } else {
+      playhead = Math.max(0, lt.h.b);
+      lastStartBlick = playhead;
+      if (playing) restartPlayback();
+      draw();
+    }
+  }
+}, { passive: true });
+cvLyric.addEventListener("touchcancel", () => { lyrTouch = null; });
+
+/* ---- タッチ（スマホ）: ピアノロール（タップ=歌詞編集 / ルーラータップ=シーク） ---- */
+let rollTouch = null;
+cv.addEventListener("touchstart", e => {
+  if (!project || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  const rect = cv.getBoundingClientRect();
+  rollTouch = { x0: t.clientX, y0: t.clientY, px: t.clientX - rect.left, py: t.clientY - rect.top, moved: false };
+  hideEditor();
+}, { passive: true });
+cv.addEventListener("touchmove", e => {
+  if (!rollTouch || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  if (Math.abs(t.clientX - rollTouch.x0) + Math.abs(t.clientY - rollTouch.y0) > 10) rollTouch.moved = true;
+}, { passive: true });
+cv.addEventListener("touchend", e => {
+  if (!rollTouch) return;
+  const rt = rollTouch; rollTouch = null;
+  if (rt.moved || !project) return;
+  const px = rt.px, py = rt.py;
+  if (py < RULER_H && px > KEYS_W) { // ルーラー: シーク
+    playhead = Math.max(0, scrollT + px2blick(px - KEYS_W));
+    lastStartBlick = playhead;
+    if (playing) restartPlayback();
+    draw(); return;
+  }
+  const h = hit(px, py);
+  if (h && h.note) {
+    selSet = new Set([h.note]);
+    sel = { row: h.row, note: h.note };
+    draw();
+    openEditor(editorAnchor);
+  }
+}, { passive: true });
+cv.addEventListener("touchcancel", () => { rollTouch = null; });
+
+function drawRow(r, t0, t1, viewH, isActive, playingNote, dimSolo) {
   ctx.save();
   ctx.beginPath(); ctx.rect(KEYS_W, 0, cv.width/dpr - KEYS_W, viewH); ctx.clip();
-  ctx.globalAlpha = isActive ? 1 : 0.13;   // ghost: other tracks faintly visible
+  ctx.globalAlpha = isActive ? 1 : (dimSolo ? 0.04 : 0.13);   // ghost: other tracks faintly visible
   for (const n of r.notes) {
     const onset = n.onset + r.blickOffset, p = n.pitch + r.pitchOffset;
     if (onset + n.duration < t0 || onset > t1) continue;
@@ -1301,6 +1493,10 @@ function setStatusTip() {
   const el = document.getElementById("autosaveTip");
   if (el) el.style.display = "inline";
 }
+function hideAutosaveTip() {
+  const el = document.getElementById("autosaveTip");
+  if (el) el.style.display = "none";
+}
 setInterval(scheduleAutosave, 2000);
 function loadAutosave() {
   try {
@@ -1315,17 +1511,16 @@ function loadAutosave() {
         activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
         renderTrackPane();
         setStatus(`自動保存から復元: ${o.name}`);
+        setStatusTip();
         return true;   // 復元した
       }
     } else {
       localStorage.removeItem(AUTOSAVE_KEY);
+      hideAutosaveTip();
     }
   } catch (e) { console.warn("autosave restore failed", e); }
   return false;   // 復元しなかった（新規読込OK）
 }
-// clear autosave after explicit save
-const _saveClick = ui.saveBtn.onclick;
-ui.saveBtn.onclick = () => { _saveClick(); try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e){} };
 
 /* ==================== keys ==================== */
 window.addEventListener("keydown", e => {
@@ -1366,34 +1561,132 @@ window.addEventListener("keydown", e => {
 });
 
 /* ==================== track pane (left) ==================== */
-function trackGroups() {
-  const map = new Map();
-  for (const r of rows) {
-    if (!map.has(r.trackIdx)) map.set(r.trackIdx, { trackIdx: r.trackIdx, name: r.trackName, hue: r.hue, inst: [], notes: 0 });
-    const g = map.get(r.trackIdx);
-    g.inst.push(r); g.notes += r.notes.length;
-  }
-  return [...map.values()].sort((a,b) => a.trackIdx - b.trackIdx);
+function trackMeta(i) {
+  const rs = rows.filter(r => r.trackIdx === i);
+  const tr = project && project.tracks && project.tracks[i];
+  const name = (tr && tr.name) || (rs[0] && rs[0].trackName) || `Track ${i+1}`;
+  return {
+    name,
+    hue: rs.length ? rs[0].hue : (210 + i * 137.5) % 360,
+    notes: rs.reduce((a, r) => a + r.notes.length, 0),
+    inst: rs.length,
+    mute: rs.some(r => r.mute),
+    solo: !!trackS[i],
+  };
+}
+function selectTrack(i) {
+  if (i < 0 || (project && i >= project.tracks.length)) return;
+  activeTrackIdx = i; selSet = new Set(); sel = null; hideEditor();
+  renderTrackPane(); draw();
+}
+function toggleTrackMute(i) {
+  if (!project || !project.tracks[i]) return;
+  const tr = project.tracks[i];
+  const cur = rows.some(r => r.trackIdx === i && r.mute);
+  pushUndo();
+  for (const r of rows) if (r.trackIdx === i) { r.mute = !cur; if (r._ref) r._ref.mute = !cur; }
+  for (const rf of [tr.mainRef, ...(tr.groups || [])].filter(Boolean)) if (rf) rf.mute = !cur;
+  if (playing) restartPlayback();
+  renderTrackPane(); draw();
+  setStatus(`トラック「${tr.name || "Track " + (i+1)}」: ${!cur ? "ミュートON（再生で鳴らさない）" : "ミュート解除"}`);
+}
+function toggleTrackSolo(i) {
+  if (!project || !project.tracks[i]) return;
+  const tr = project.tracks[i];
+  trackS[i] = !trackS[i];
+  if (playing) restartPlayback();
+  renderTrackPane(); draw();
+  setStatus(trackS[i] ? `ソロ: 「${tr.name || "Track " + (i+1)}」のみ再生` : "ソロ解除（全トラック再生）");
+}
+function addTrack() {
+  if (!project) return;
+  pushUndo();
+  const idx = project.tracks.length;
+  const nm = `Track ${idx + 1}`;
+  const mainGroup = { uuid: makeUuid(), name: "", notes: [] };
+  project.tracks.push({
+    uuid: makeUuid(), name: nm,
+    mainRef: { uuid: makeUuid(), type: "main", blickAbsoluteBegin: 0, blickOffset: 0, pitchOffset: 0, mute: false },
+    groups: [], mainGroup,
+  });
+  trackS.push(false);
+  restoreFrom(project);
+  activeTrackIdx = idx;
+  renderTrackPane(); draw();
+  setStatus(`トラック追加: ${nm}（ピアノロールをダブルクリックでノート追加）`);
+}
+function deleteTrack() {
+  if (!project || !project.tracks.length) return;
+  if (project.tracks.length <= 1) { setStatus("最後の1トラックは削除できません"); return; }
+  const i = activeTrackIdx;
+  const tr = project.tracks[i];
+  if (!tr) return;
+  if (!confirm(`トラック「${tr.name || "Track " + (i+1)}」を削除しますか？\n（このトラックの全ノートも削除されます。Ctrl+Zで戻せます）`)) return;
+  pushUndo();
+  project.tracks.splice(i, 1);
+  trackS.splice(i, 1);
+  restoreFrom(project);
+  if (!rows.some(r => r.trackIdx === activeTrackIdx)) activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
+  if (project.tracks.length && activeTrackIdx >= project.tracks.length) activeTrackIdx = project.tracks.length - 1;
+  renderTrackPane(); draw();
+  setStatus(`トラック削除: ${tr.name || ""}`);
 }
 function renderTrackPane() {
-  const gs = trackGroups();
+  const nTrk = project ? project.tracks.length : 0;
+  uiM.addTrackBtn.disabled = !project;
+  uiM.mAddBtn.disabled = !project;
+  const canDel = !!project && nTrk > 1;
+  uiM.delTrackBtn.disabled = uiM.mDelBtn.disabled = !canDel;
+  const items = [];
+  for (let i = 0; i < nTrk; i++) items.push({ i, m: trackMeta(i) });
   ui.trackList.innerHTML = "";
-  for (const g of gs) {
+  for (const it of items) {
+    const g = it.m;
     const el = document.createElement("div");
-    el.className = "trackItem" + (g.trackIdx === activeTrackIdx ? " active" : "");
-    const sw = document.createElement("span");
-    sw.className = "swatch";
+    el.className = "trackItem" + (it.i === activeTrackIdx ? " active" : "");
+    const sw = document.createElement("span"); sw.className = "swatch";
     sw.style.background = `hsl(${g.hue},65%,58%)`;
     const txt = document.createElement("span");
-    txt.innerHTML = `<span>${escapeHtml(g.name)}${g.inst.length > 1 ? ` <i>(${g.inst.length}段)</i>` : ""}</span>` +
-      `<span class="sub">${g.notes}ノート${g.inst.some(i => i.mute) ? " · muteあり" : ""}</span>`;
+    txt.innerHTML = `<span>${escapeHtml(g.name)}${g.inst > 1 ? ` <i>(${g.inst}段)</i>` : ""}</span>` +
+      `<span class="sub">${g.notes}ノート${g.mute ? " · mute" : ""}${g.solo ? " · solo" : ""}</span>`;
+    const mbtn = document.createElement("button");
+    mbtn.className = "mbtn" + (g.mute ? " on" : ""); mbtn.textContent = "M"; mbtn.title = "ミュート";
+    mbtn.onclick = ev => { ev.stopPropagation(); toggleTrackMute(it.i); };
+    const sbtn = document.createElement("button");
+    sbtn.className = "sbtn" + (g.solo ? " on" : ""); sbtn.textContent = "S"; sbtn.title = "ソロ";
+    sbtn.onclick = ev => { ev.stopPropagation(); toggleTrackSolo(it.i); };
     const cnt = document.createElement("span");
-    cnt.className = "cnt"; cnt.textContent = g.trackIdx === activeTrackIdx ? "●" : "";
-    el.append(sw, txt, cnt);
-    el.onclick = () => { activeTrackIdx = g.trackIdx; selSet = new Set(); sel = null; hideEditor(); renderTrackPane(); draw(); };
+    cnt.className = "cnt"; cnt.textContent = it.i === activeTrackIdx ? "●" : "";
+    el.append(sw, txt, mbtn, sbtn, cnt);
+    el.onclick = () => selectTrack(it.i);
     ui.trackList.appendChild(el);
   }
+  // モバイルバーと同期
+  if (uiM.trackSel) {
+    const sel = uiM.trackSel;
+    sel.innerHTML = "";
+    for (const it of items) {
+      const o = document.createElement("option");
+      o.value = it.i;
+      o.textContent = `${it.m.name}${it.m.inst > 1 ? ` (${it.m.inst}段)` : ""}${it.m.solo ? " [S]" : ""}${it.m.mute ? " [M]" : ""}`;
+      if (it.i === activeTrackIdx) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.disabled = !items.length;
+    const g = trackMeta(Math.min(activeTrackIdx, Math.max(0, nTrk - 1)));
+    const hasItems = !!items.length;
+    uiM.mMuteBtn.disabled = !hasItems; uiM.mSoloBtn.disabled = !hasItems;
+    uiM.mMuteBtn.classList.toggle("onM", hasItems && !!g.mute);
+    uiM.mSoloBtn.classList.toggle("onS", hasItems && !!g.solo);
+  }
 }
+uiM.addTrackBtn.onclick = addTrack;
+uiM.delTrackBtn.onclick = deleteTrack;
+uiM.mAddBtn.onclick = addTrack;
+uiM.mDelBtn.onclick = deleteTrack;
+uiM.mMuteBtn.onclick = () => toggleTrackMute(Math.min(activeTrackIdx, Math.max(0, (project && project.tracks.length || 1) - 1)));
+uiM.mSoloBtn.onclick = () => toggleTrackSolo(Math.min(activeTrackIdx, Math.max(0, (project && project.tracks.length || 1) - 1)));
+if (uiM.trackSel) uiM.trackSel.onchange = () => selectTrack(+uiM.trackSel.value);
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 /* ==================== audio (square wave preview) ==================== */
@@ -1403,8 +1696,9 @@ function audioCtx() { if (!AC) AC = new (window.AudioContext || window.webkitAud
 function noteFreq(p, detune) { return 440 * Math.pow(2, (p - 69 + (detune||0)/100) / 12); }
 function collectPlayNotes(fromB) {
   const out = [];
+  const soloAny = trackS.some(Boolean);
   for (const r of rows) {
-    if (r.mute) continue;
+    if (soloAny ? !trackS[r.trackIdx] : r.mute) continue;
     for (const n of r.notes) {
       const onset = n.onset + r.blickOffset;
       if (onset + n.duration > fromB) out.push({ onset, dur: n.duration, p: n.pitch + r.pitchOffset, detune: n.detune });
@@ -1528,6 +1822,12 @@ ui.stopBtn.onclick = () => {
 };  // ■: stopMode stay=その場で停止 / return=再生開始位置に戻る
 
 /* ==================== file io ==================== */
+function loadFile(file) {
+  if (!file) return;
+  const ln = file.name.toLowerCase();
+  if (ln.endsWith(".mid") || ln.endsWith(".midi")) askMidiBpm(file);
+  else readFile(file);
+}
 function readFile(file) {
   const r = new FileReader();
   r.onload = () => {
@@ -1546,14 +1846,25 @@ function readFile(file) {
   };
   r.readAsText(file, "utf-8");
 }
+// デモ読込（?demo時にヒントのボタンから起動）
+function loadDemo() {
+  fetch("demo.svp").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(txt => {
+      const f = new File([txt], "demo.svp", { type: "application/json" });
+      readFile(f);
+    })
+    .catch(err => setStatus("デモ読み込み失敗: " + err.message + "（demo.svp が見つかりません）"));
+}
+uiM.hintOpenBtn.onclick = () => ui.fileInput.click();
+uiM.hintDemoBtn.onclick = loadDemo;
 ui.openBtn.onclick = () => ui.fileInput.click();
-ui.fileInput.onchange = () => { if (ui.fileInput.files[0]) readFile(ui.fileInput.files[0]); };
+ui.fileInput.onchange = () => loadFile(ui.fileInput.files[0]);
 window.addEventListener("dragover", e => { e.preventDefault(); ui.drop.style.display = "flex"; });
 window.addEventListener("dragleave", e => { if (e.target === document.documentElement) ui.drop.style.display = "none"; });
 window.addEventListener("drop", e => {
   e.preventDefault(); ui.drop.style.display = "none";
   const f = e.dataTransfer.files[0];
-  if (f && f.name.toLowerCase().endsWith(".svp")) readFile(f);
+  if (f && /\.(svp|midi?)$/i.test(f.name)) loadFile(f);
 });
 ui.saveBtn.onclick = () => {
   if (!project) return;
@@ -1565,8 +1876,133 @@ ui.saveBtn.onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
   dirty = false;
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e) {}
+  hideAutosaveTip();
   setStatus("書き出しました: " + a.download);
 };
+
+/* ==================== MIDI 読み込み ==================== */
+function askMidiBpm(file) {
+  if (!uiM.midiDlg) return;
+  uiM.midiBpm.value = 120;
+  uiM.midiDlg.style.display = "flex";
+  uiM.midiBpm.focus(); uiM.midiBpm.select();
+  const doOk = () => {
+    const bpm = Math.min(400, Math.max(20, parseFloat(uiM.midiBpm.value) || 120));
+    uiM.midiDlg.style.display = "none";
+    readMidiFile(file, bpm);
+  };
+  uiM.midiOk.onclick = doOk;
+  uiM.midiCancel.onclick = () => { uiM.midiDlg.style.display = "none"; setStatus("MIDI読み込みをキャンセル"); };
+  uiM.midiBpm.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); doOk(); } };
+}
+function readMidiFile(file, bpm) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const midi = parseMidi(r.result);
+      const built = midiToProject(midi, bpm, file.name);
+      if (parseProject(built.project, built.displayName)) {
+        scrollT = 0; draw();
+        activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
+        selSet = new Set(); sel = null;
+        hideEditor(); renderTrackPane();
+        const cnt = rows.reduce((a, r) => a + r.notes.length, 0);
+        setStatus(`${file.name} — MIDI読込: ${built.project.tracks.length}トラック / ${cnt}ノート / BPM ${bpm}`);
+      }
+    } catch (err) { setStatus("MIDI読み込みエラー: " + err.message); }
+  };
+  r.readAsArrayBuffer(file);
+}
+// SMF (Standard MIDI File) パーサ: PPQのみ。チャンネルごとにトラック化
+function parseMidi(ab) {
+  const dv = new DataView(ab);
+  const bytes = new Uint8Array(ab);
+  let off = 0;
+  const str = n => { let s = ""; for (let i = 0; i < n; i++) s += String.fromCharCode(dv.getUint8(off + i)); off += n; return s; };
+  const u16 = () => { const v = dv.getUint16(off); off += 2; return v; };
+  const u32 = () => { const v = dv.getUint32(off); off += 4; return v; };
+  const u8 = () => dv.getUint8(off++);
+  const vlq = () => { let v = 0, b, n = 0; do { b = u8(); v = (v << 7) | (b & 0x7f); if (++n > 4) throw new Error("VLQ overflow"); } while (b & 0x80); return v; };
+  if (str(4) !== "MThd") throw new Error("MThd ヘッダがありません");
+  const hlen = u32(); u16(); const ntrk = u16(); const division = u16();
+  if (hlen > 6) off += hlen - 6;
+  if (division & 0x8000) throw new Error("SMPTE時間形式のMIDIは未対応（PPQのみ）");
+  if (division <= 0) throw new Error("division 不正");
+  const trackNames = [];
+  const chNotes = {}; // ch -> [{p,start,end}]
+  const close = (ch, p, abs) => {
+    const arr = chNotes[ch]; if (!arr) return;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].p === p && arr[i].end === undefined) { arr[i].end = abs; return; }
+    }
+  };
+  for (let t = 0; t < ntrk; t++) {
+    if (str(4) !== "MTrk") { const sl = u32(); off += sl; continue; }
+    const len = u32(); const end = off + len;
+    let abs = 0, running = 0;
+    while (off < end) {
+      abs += vlq();
+      const b0 = u8();
+      if (b0 === 0xff) { // meta
+        const mt = u8(); const ml = vlq();
+        if (mt === 0x03) {
+          try { const nm = new TextDecoder("utf-8").decode(bytes.subarray(off, off + ml)).trim(); if (nm) trackNames.push(nm); } catch (e) {}
+        }
+        off += ml; running = 0; continue;
+      }
+      if (b0 === 0xf0 || b0 === 0xf7) { off += vlq(); running = 0; continue; } // sysex
+      if (b0 >= 0xf8) continue; // realtime（通常ファイルには無い）
+      let status = b0, d1;
+      if (b0 & 0x80) { running = b0; d1 = u8(); }
+      else { status = running; d1 = b0; } // running status
+      const hi = status & 0xf0, ch = status & 0x0f;
+      if (hi === 0x90 || hi === 0x80) {
+        const d2 = u8();
+        if (hi === 0x90 && d2 > 0) {
+          if (!chNotes[ch]) chNotes[ch] = [];
+          chNotes[ch].push({ p: d1, start: abs });
+        } else close(ch, d1, abs);
+      } else if (hi === 0xc0 || hi === 0xd0) { /* 1バイト系: 無視 */ }
+      else { u8(); /* CC/PB等: 無視 */ }
+    }
+    // トラック末尾: 閉じていないノートは終端で閉じる（最低 1/4音符分）
+    for (const ch of Object.keys(chNotes)) {
+      const arr = chNotes[ch];
+      for (const x of arr) if (x.end === undefined) x.end = Math.max(abs, x.start + division / 4);
+    }
+  }
+  const chKeys = Object.keys(chNotes).filter(ch => chNotes[ch].some(x => x.end !== undefined && x.end > x.start));
+  if (!chKeys.length) throw new Error("ノートイベントがありません");
+  const baseName = trackNames[0] || "MIDI";
+  const multi = chKeys.length > 1;
+  const chans = chKeys.sort((a, b) => +a - +b).map(ch => {
+    const notes = chNotes[ch].filter(x => x.end !== undefined && x.end > x.start)
+      .map(x => ({ pitch: x.p, start: x.start, dur: x.end - x.start }))
+      .sort((a, b) => a.start - b.start);
+    return { name: multi ? `${baseName} ch${+ch + 1}` : baseName, notes };
+  }).filter(c => c.notes.length);
+  return { ppq: division, chans };
+}
+function midiToProject(midi, bpm, origName) {
+  const base = origName.replace(/\.midi?$/i, "");
+  const tb = t => Math.round(t * QUARTER / midi.ppq); // tick -> blick (BPM非依存: テンポマップで表現)
+  const mkNote = n => ({
+    uuid: makeUuid(), musicalType: "singing", onset: tb(n.start), duration: Math.max(QUARTER / 16, tb(n.dur)),
+    lyrics: "", phonemes: "", accent: "", pitch: n.pitch, detune: 0,
+    attributes: { evenSyllableDuration: true, muted: false },
+    takes: { activeTakeId: 0, takes: [{ id: 0, seedDuration: 0, seedPitch: 0, seedTimbre: 0, liked: false }] },
+  });
+  const project = {
+    time: { tempo: [{ position: 0, bpm }], meter: [{ index: 0, numerator: 4, denominator: 4 }] },
+    tracks: midi.chans.map(c => ({
+      uuid: makeUuid(), name: c.name,
+      mainRef: { uuid: makeUuid(), type: "main", blickAbsoluteBegin: 0, blickOffset: 0, pitchOffset: 0, mute: false },
+      groups: [], mainGroup: { uuid: makeUuid(), name: "", notes: c.notes.map(mkNote) },
+    })),
+  };
+  return { project, displayName: base + ".svp" };
+}
 
 /* ==================== pane resize (track width + vertical splits) ==================== */
 function makeResizer(handle, apply, cursorActive) {
@@ -1626,17 +2062,16 @@ document.getElementById("paneResize").addEventListener("dblclick", () => paneTog
 /* ==================== boot ==================== */
 resize();
 loadPrefs();
-// demo mode: when opened with ?demo, fetch & load a bundled sample project.
-// 自動保存データがある場合(復元した場合)はデモよりユーザーの作業を優先する
+// 自動保存データがあれば復元を優先（復元した場合はヒントごと消える）
 const restored = loadAutosave();
-
-if (!restored && location.search.includes("demo")) {
-  fetch("demo.svp").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
-    .then(txt => {
-      const f = new File([txt], "demo.svp", { type: "application/json" });
-      readFile(f);
-    })
-    .catch(err => setStatus("デモ読み込み失敗: " + err.message + "（demo.svp が見つかりません）"));
+if (!restored) {
+  // ?demo時は「いきなりデモ読込」せず、ヒントで「svp/midiを開く」or「デモを読み込む」を選ばせる
+  hintDemoQ = location.search.includes("demo");
+  uiM.hintOpenBtn.style.display = "inline-block";
+  if (hintDemoQ) {
+    uiM.hintDemoBtn.style.display = "inline-block";
+    setStatus("デモページ: 「svp / midi を開く」か「デモを読み込む」を選択");
+  }
 }
 </script>
 </body>
