@@ -9,6 +9,7 @@ Thumbs.db
 testdata/
 *.svp
 !examples/**/*.svp
+!demo.svp
 
 # Node
 node_modules/

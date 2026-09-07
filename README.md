@@ -28,6 +28,10 @@ No build step, no server, fully offline — **your files never leave your browse
 
 ## Quick Start / 使い方
 
+**デモを試すだけなら**: [デモサイト](https://manate-anagram.github.io/svp-lyric-editor/?demo) を開く（サンプル曲が読み込まれた状態で起動）
+
+**自分の .svp を編集するなら**:
+
 1. [index.html](./index.html) をダウンロードしてブラウザで開く（Chrome / Edge / Firefox / Safari 推奨）
 2. `.svp` ファイルをドラッグ&ドロップ（またはツールバーの「開く」ボタン）
 3. 編集して「svp書き出し」→ `<元ファイル名>_edited.svp` がダウンロードされる
@@ -70,6 +74,7 @@ No build step, no server, fully offline — **your files never leave your browse
 ```
 svp-lyric-editor/
 ├── index.html                # 本体（HTML+CSS+JS すべてこの1ファイル）
+├── demo.svp                   # デモ用サンプル（?demo クエリで自動読込される）
 ├── README.md
 ├── LICENSE
 └── docs/

@@ -1605,6 +1605,17 @@ document.getElementById("paneResize").addEventListener("dblclick", () => paneTog
 resize();
 loadPrefs();
 loadAutosave();
+
+// demo mode: when opened with ?demo, fetch & load a bundled sample project
+// (local/offline use stays as-is — normal users load their own .svp via D&D)
+if (location.search.includes("demo")) {
+  fetch("demo.svp").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(txt => {
+      const f = new File([txt], "demo.svp", { type: "application/json" });
+      readFile(f);
+    })
+    .catch(err => setStatus("デモ読み込み失敗: " + err.message + "（demo.svp が見つかりません）"));
+}
 </script>
 </body>
 </html>
