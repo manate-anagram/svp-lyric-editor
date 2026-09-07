@@ -24,7 +24,7 @@ No build step, no server, fully offline — **your files never leave your browse
   - **歌詞ストリップ** — 全ノートの歌詞を帯状に表示し、追従スクロールで再生中の歌詞を確認・編集
 - **複数トラック対応** — Synthesizer V 1 / 2 の .svp 構造に対応、トラックごとに色分け
 - **自動保存** — 編集内容を localStorage に自動保存（誤リロードに備える）
-- **svp 書き出し** — 編集後そのまま `.svp` をダウンロード → Synthesizer V Studio で開ける
+- **svp 書き出し** — 編集後そのまま `.svp` をダウンロード → Synthesizer V Studio で開ける（読み込んだ形式・バージョンのまま保存）
 
 ## Quick Start / 使い方
 
@@ -92,6 +92,7 @@ svp-lyric-editor/
 - 複数トラック（`tracks[].mainRef/groups[]` 参照ごとに1インスタンスとして描画。`blickAbsoluteBegin/blickOffset/pitchOffset/mute` 反映）
 - テンポマップ (`time.tempo`)・拍子 (`time.meter`)、複数小節変更グリッド
 - 末尾NULパディング付き svp（Synthesizer V 1 世代）も自動読込
+- 保存（書き出し）時は**読み込んだ JSON 構造をそのまま保持** — SynthV 1 形式で読めば SynthV 1 形式、SynthV 2 形式で読めば SynthV 2 形式のまま書き出される（バージョン変換は行わない）
 
 ## Known limitations / 既知の制限 (Phase 2 candidates)
 
