@@ -19,7 +19,7 @@ No build step, no server, fully offline — **your files never leave your browse
   - **音素自動生成**: かな歌詞 → Synthesizer V 公式ローマ字音素表(ROMAJI)準拠で自動変換
 - **再生プレビュー** — Web Audio API の矩形波で試聴（全トラック・メトロノーム・追従スクロール付き）
 - **全体ビュー / 歌詞ストリップ** — 曲全体の俯瞰と集中歌詞編集用の帯表示
-- **複数トラック対応** — v1 / v2 / v3 の .svp 構造に対応、トラックごとに色分け
+- **複数トラック対応** — Synthesizer V 1 / 2 の .svp 構造に対応、トラックごとに色分け
 - **自動保存** — 編集内容を localStorage に自動保存（誤リロードに備える）
 - **svp 書き出し** — 編集後そのまま `.svp` をダウンロード → Synthesizer V Studio で開ける
 
@@ -96,10 +96,10 @@ svp-lyric-editor/
 ## Supported formats / 対応形式
 
 - Synthesizer V Studio `.svp`
-  - v1 (153系, mainGroup直構造) と v2/v3 (196系, library+tracks構造) の両方を**実ファイルで検証済み**
+  - **Synthesizer V 1** 形式（notes が `tracks[].mainGroup.notes` に直接入る構造）と **Synthesizer V 2** 形式（notes が `library[]` にあり `tracks[].mainRef/groups[]` が参照する構造）の両方を**実ファイルで検証済み**
 - 複数トラック（`tracks[].mainRef/groups[]` 参照ごとに1インスタンスとして描画。`blickAbsoluteBegin/blickOffset/pitchOffset/mute` 反映）
 - テンポマップ (`time.tempo`)・拍子 (`time.meter`)、複数小節変更グリッド
-- 末尾NULパディング付き svp（v1世代）も自動読込
+- 末尾NULパディング付き svp（Synthesizer V 1 世代）も自動読込
 
 ## Known limitations / 既知の制限 (Phase 2 candidates)
 
