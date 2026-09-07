@@ -73,6 +73,7 @@ svp-lyric-editor/
 ├── README.md
 ├── LICENSE
 └── docs/
+    ├── legal-notes.md                 # 権利関係・免責の詳細
     └── screenshot.png                 # スクリーンショット
 ```
 
@@ -104,4 +105,4 @@ MIT License — see [LICENSE](./LICENSE).
 
 ---
 
-*This project is an independent viewer/editor for Synthesizer V project files and is not affiliated with Dreamtonics Co., Ltd. Synthesizer V is a trademark of Dreamtonics Co., Ltd. / 本ツールは Dreamtonics 株式会社の公式製品ではなく、同社とは無関係です。Synthesizer V は Dreamtonics 株式会社の商標です。*
+*This project is an independent viewer/editor for Synthesizer V project files and is not affiliated with Dreamtonics Co., Ltd. Synthesizer V is a trademark of Dreamtonics Co., Ltd. / 本ツールは Dreamtonics 株式会社の公式製品ではなく、同社とは無関係です。Synthesizer V は Dreamtonics 株式会社の商標です。詳細は [docs/legal-notes.md](./docs/legal-notes.md) を参照。*
