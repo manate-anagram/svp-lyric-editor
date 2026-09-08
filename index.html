@@ -1881,8 +1881,14 @@ ui.playBtn.onclick = () => { if (!_toggleLock) togglePlay(); };
 // ■停止ボタン（個別UI）は廃止: 再生/一時停止ボタンが停止も兼ねる
 
 /* ==================== file io ==================== */
+// 編集中(未保存)に別ファイルを読み込む場合の確認（復元時と同様のポップアップ）
+function confirmDiscardForLoad(newName) {
+  if (!project || !dirty) return true;
+  return confirm(`編集中の「${fileName}」には未保存の変更があります。\n破棄して「${newName}」を読み込みますか？\n\n「OK」で読み込む / 「キャンセル」で中止`);
+}
 function loadFile(file) {
   if (!file) return;
+  if (!confirmDiscardForLoad(file.name)) { setStatus("読み込みをキャンセルしました（編集中の変更を保持）"); return; }
   const ln = file.name.toLowerCase();
   if (ln.endsWith(".mid") || ln.endsWith(".midi")) askMidiBpm(file);
   else readFile(file);
@@ -1907,6 +1913,7 @@ function readFile(file) {
 }
 // デモ読込（?demo時にヒントのボタンから起動）
 function loadDemo() {
+  if (!confirmDiscardForLoad("デモ（demo.svp）")) { setStatus("デモ読込をキャンセルしました（編集中の変更を保持）"); return; }
   fetch("demo.svp").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
     .then(txt => {
       const f = new File([txt], "demo.svp", { type: "application/json" });
