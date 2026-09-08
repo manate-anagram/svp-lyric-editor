@@ -116,7 +116,18 @@
     #miniWrap { height: 30px !important; }
     #lyricWrap { height: 44% !important; min-height: 110px; }
     #status { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #audioWrap { height: 28px !important; }
   }
+  /* ---- オーディオトラック帯 ---- */
+  #audioWrap { position: relative; height: 44px; flex: none; background: var(--panel); border-bottom: 1px solid #000; }
+  #audioHead { font-size: 10px; color: #9aa1ad; padding: 2px 8px; user-select: none; }
+  .audioItem { display: flex; align-items: center; gap: 6px; padding: 3px 8px; margin: 1px 4px;
+    border-radius: 5px; background: #252a36; color: #cfe0ff; font-size: 11px; }
+  .audioItem .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .audioItem .du { color: #6a7280; font-size: 10px; }
+  .audioItem button { background: none; border: none; color: #6a7280; cursor: pointer; padding: 0 2px; font-size: 12px; }
+  .audioItem button:hover { color: #ff5d7a; }
+  .audioEmpty { color: #565d6b; font-size: 11px; padding: 6px 8px; }
 </style>
 </head>
 <body>
@@ -144,7 +155,7 @@
   <button id="stopModeBtn" disabled title="停止後の再開位置: その場から / 前回の再生開始位置から">■停止: その場で停止</button>
   <span id="status">未読込</span>
   <span id="autosaveTip" style="display:none;color:#6a7280;font-size:10px;" title="編集内容を自動でブラウザに保存しています">・自動保存中</span>
-  <input type="file" id="fileInput" accept=".svp,.mid,.midi" style="display:none">
+  <input type="file" id="fileInput" accept=".svp,.mid,.midi,.wav,.mp3,.ogg,.m4a,.flac,.aac,.opus" style="display:none">
 </div>
 <div id="mobileBar">
   <select id="trackSel" title="トラック切替" disabled></select>
@@ -165,6 +176,7 @@
   <div id="rollWrap">
     <div id="miniWrap"><canvas id="cvMini"></canvas></div>
     <div id="vResize1"></div>
+    <div id="audioWrap"><canvas id="cvAudio"></canvas></div>
     <div id="cvWrap">
       <canvas id="cv"></canvas>
       <div id="hint">
@@ -230,6 +242,7 @@ let redoStack = [];
 let dirty = false;
 let trackS = [];               // トラックごとのソロ状態（エディタ専用・svpには書かない）
 let hintDemoQ = false;         // boot時に?demo付きで開かれたか（ヒントにデモボタンを出す）
+let audioItems = [];           // 配置音声クリップ（セッション内のみ・svpには書かない）
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -241,6 +254,7 @@ const ui = { openBtn:$("openBtn"), saveBtn:$("saveBtn"), playBtn:$("playBtn"),
   edPhonAuto: $("edPhonAuto"), edSplit: $("edSplit"), lyricSplit: $("lyricSplit") };
 const cvMini = document.getElementById("cvMini"), ctxMini = cvMini.getContext("2d");
 const cvLyric = document.getElementById("cvLyric"), ctxLyric = cvLyric.getContext("2d");
+const cvAudio = document.getElementById("cvAudio"), ctxAudio = cvAudio.getContext("2d");
 // 追加UI: ヒント読込ボタン / トラックヘッダ / モバイルバー / MIDIモーダル
 const uiM = {
   hintOpenBtn: $("hintOpenBtn"), hintDemoBtn: $("hintDemoBtn"),
@@ -377,7 +391,7 @@ function parseProject(json, name, opts = {}) {
     zoomY = Math.max(0.6, Math.min(2, cv.clientHeight / Math.max(1,(hi-lo+12)) / ROW_H));
     sel = null; selSet = new Set(); playhead = 0;
   }
-  if (!opts.keepHistory) { undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); }
+  if (!opts.keepHistory) { undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); audioItems = []; }
   dirty = false;
   ui.saveBtn.disabled = ui.playBtn.disabled = false;
   ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false; ui.stopModeBtn.disabled = false;
@@ -396,10 +410,10 @@ function snapBlick(b) { if (!snap) return Math.round(b); return Math.round(b / s
 /* ==================== rendering ==================== */
 let dpr = window.devicePixelRatio || 1;
 // 前回のバッキングサイズを記憶し、変化した時だけcanvasサイズを更新（CSSストレッチ防止）
-let lastSizes = { cv: [0,0], mini: [0,0], lyric: [0,0] };
+let lastSizes = { cv: [0,0], mini: [0,0], lyric: [0,0], audio: [0,0] };
 function syncBacking() {
   const sizes = [
-    [cv, lastSizes.cv], [cvMini, lastSizes.mini], [cvLyric, lastSizes.lyric]
+    [cv, lastSizes.cv], [cvMini, lastSizes.mini], [cvLyric, lastSizes.lyric], [cvAudio, lastSizes.audio]
   ];
   for (const [c, memo] of sizes) {
     const w = c.clientWidth * dpr, h = c.clientHeight * dpr;
@@ -417,6 +431,7 @@ function draw() {
   drawMain();
   drawMini();
   drawLyric();
+  drawAudio();
 }
 function drawMain() {
   const W = cv.width/dpr, H = cv.height/dpr;
@@ -1746,6 +1761,7 @@ function renderTrackPane() {
     uiM.mMuteBtn.classList.toggle("onM", hasItems && !!g.mute);
     uiM.mSoloBtn.classList.toggle("onS", hasItems && !!g.solo);
   }
+  renderAudioPane();
 }
 uiM.addTrackBtn.onclick = addTrack;
 uiM.delTrackBtn.onclick = deleteTrack;
@@ -1755,6 +1771,155 @@ uiM.mMuteBtn.onclick = () => toggleTrackMute(Math.min(activeTrackIdx, Math.max(0
 uiM.mSoloBtn.onclick = () => toggleTrackSolo(Math.min(activeTrackIdx, Math.max(0, (project && project.tracks.length || 1) - 1)));
 if (uiM.trackSel) uiM.trackSel.onchange = () => selectTrack(+uiM.trackSel.value);
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function initAudioSchedule() {
+  const fromB = sched.startBlick;
+  const list = audioItems.filter(it => it.start + it.durBlick > fromB).sort((a, b) => a.start - b.start);
+  sched.audioList = list; sched.audioIdx = 0;
+  // 再生開始位置より前に始まっているクリップはオフセット付きで即スケジュール
+  while (sched.audioIdx < list.length && list[sched.audioIdx].start <= fromB) {
+    scheduleAudioNow(list[sched.audioIdx]);
+    sched.audioIdx++;
+  }
+}
+function scheduleAudioNow(it) {
+  const ac = audioCtx();
+  const secFrom = secOf(sched.startBlick);
+  const offset = Math.max(0, secFrom - secOf(it.start));
+  if (offset >= it.buf.duration) return;
+  const when = Math.max(ac.currentTime + 0.005, sched.startTime + secOf(it.start) - secFrom);
+  if (when > ac.currentTime + lookaheadSec() + 0.05) return;
+  const src = ac.createBufferSource(); src.buffer = it.buf;
+  const g = ac.createGain(); g.gain.value = 0.85;
+  src.connect(g).connect(ac.destination);
+  try { src.start(when, offset); } catch (e) { return; }
+  sched.live.push({ src, g });
+}
+
+/* ==================== オーディオトラック（配置音声・セッション内のみ） ==================== */
+function loadAudioFile(file) {
+  if (!project) { setStatus("先に .svp / .mid を読み込んでください（音声はトラック配置用）"); return; }
+  const r = new FileReader();
+  r.onload = () => {
+    audioCtx().decodeAudioData(r.result).then(buf => {
+      const start = Math.max(0, lastStartBlick || 0);
+      // 開始位置時点のテンポで duration(秒) → blick 換算
+      const tmarks = tempoMarks();
+      let bpm = tmarks.length ? tmarks[0].bpm : 120;
+      for (const tm of tmarks) { if (tm.position <= start) bpm = tm.bpm; else break; }
+      const durBlick = Math.max(QUARTER / 2, Math.round(buf.duration * (bpm * QUARTER / 60)));
+      audioItems.push({ id: makeUuid(), name: file.name, buf, start, durBlick });
+      if (playing) restartPlayback();
+      renderTrackPane(); draw();
+      setStatus(`音声追加: ${file.name}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
+    }).catch(() => setStatus("音声デコード失敗（wav / mp3 / ogg 等を試してください）"));
+  };
+  r.readAsArrayBuffer(file);
+}
+function removeAudioItem(id) {
+  const i = audioItems.findIndex(x => x.id === id);
+  if (i < 0) return;
+  audioItems.splice(i, 1);
+  if (playing) restartPlayback();
+  renderAudioPane(); renderTrackPane(); draw();
+  setStatus("音声クリップを削除");
+}
+function renderAudioPane() {
+  let box = document.getElementById("audioListBox");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "audioListBox";
+    const h = document.createElement("div");
+    h.id = "audioHead"; h.textContent = "AUDIO";
+    box.appendChild(h);
+    const pane = document.getElementById("trackPane");
+    if (pane) pane.appendChild(box);
+  }
+  while (box.children.length > 1) box.removeChild(box.lastChild);
+  if (!audioItems.length) {
+    const d = document.createElement("div");
+    d.className = "audioEmpty";
+    d.textContent = "wav / mp3 を開くかドロップ（配置・再生で鳴る）";
+    box.appendChild(d);
+    return;
+  }
+  for (const it of audioItems) {
+    const row = document.createElement("div");
+    row.className = "audioItem";
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name;
+    const du = document.createElement("span"); du.className = "du";
+    du.textContent = (it.durBlick / QUARTER).toFixed(2) + "Q";
+    const rm = document.createElement("button"); rm.textContent = "✕"; rm.title = "この音声を削除";
+    rm.onclick = () => removeAudioItem(it.id);
+    row.append(nm, du, rm);
+    box.appendChild(row);
+  }
+}
+function drawAudio() {
+  const W = cvAudio.width / dpr, H = cvAudio.height / dpr;
+  ctxAudio.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctxAudio.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--panel");
+  ctxAudio.fillRect(0, 0, W, H);
+  if (!project) return;
+  const t0 = scrollT, t1 = scrollT + px2blick(W);
+  ctxAudio.strokeStyle = "#2a2e38";
+  for (const bl of barLines()) {
+    if (bl.b < t0 || bl.b > t1) continue;
+    const x = blick2px(bl.b - t0);
+    ctxAudio.beginPath(); ctxAudio.moveTo(x, 0); ctxAudio.lineTo(x, H); ctxAudio.stroke();
+  }
+  const y = 5, hh = Math.max(8, H - 10);
+  audioItems.forEach((it, idx) => {
+    const x = blick2px(it.start - t0), w = Math.max(4, blick2px(it.durBlick));
+    if (x + w < 0 || x > W) return;
+    ctxAudio.fillStyle = `hsla(${270 + idx * 40}, 55%, 60%, 0.92)`;
+    ctxAudio.beginPath(); ctxAudio.roundRect(x + 1, y, Math.max(4, w - 2), hh, 4); ctxAudio.fill();
+    ctxAudio.fillStyle = "#0d0f14";
+    if (w > 34) ctxAudio.fillText(it.name, x + 5, y + hh / 2 + 4, w - 10);
+    else ctxAudio.fillText("♪", x + 4, y + hh / 2 + 4);
+  });
+  if (playhead >= t0 && playhead <= t1) {
+    const x = blick2px(playhead - t0);
+    ctxAudio.strokeStyle = "#ff5d7a"; ctxAudio.lineWidth = 1.5;
+    ctxAudio.beginPath(); ctxAudio.moveTo(x, 0); ctxAudio.lineTo(x, H); ctxAudio.stroke(); ctxAudio.lineWidth = 1;
+  }
+}
+let audioDrag = null;
+function audioHitFromXY(cx) {
+  if (!project) return null;
+  const b = scrollT + px2blick(cx);
+  for (const it of audioItems) {
+    if (b >= it.start && b <= it.start + it.durBlick) {
+      const xpx = blick2px(it.start - scrollT);
+      const wpx = blick2px(it.durBlick);
+      return { it, mode: cx > xpx + wpx - Math.min(10, wpx * 0.3) ? "resizeR" : "move", b };
+    }
+  }
+  return null;
+}
+cvAudio.addEventListener("mousemove", e => {
+  const r = cvAudio.getBoundingClientRect();
+  const h = project ? audioHitFromXY(e.clientX - r.left) : null;
+  cvAudio.style.cursor = audioDrag ? "grabbing" : (h ? (h.mode === "move" ? "move" : "ew-resize") : "default");
+});
+cvAudio.addEventListener("mousedown", e => {
+  if (!project || e.button !== 0) return;
+  const r = cvAudio.getBoundingClientRect();
+  const h = audioHitFromXY(e.clientX - r.left);
+  if (h) audioDrag = { it: h.it, mode: h.mode, b0: h.b, start0: h.it.start, dur0: h.it.durBlick };
+});
+window.addEventListener("mousemove", e => {
+  if (!audioDrag) return;
+  const r = cvAudio.getBoundingClientRect();
+  const b = scrollT + px2blick(e.clientX - r.left);
+  const db = b - audioDrag.b0;
+  if (audioDrag.mode === "move") audioDrag.it.start = Math.max(0, audioDrag.start0 + db);
+  else audioDrag.it.durBlick = Math.max(QUARTER / 2, audioDrag.dur0 + db);
+  draw();
+});
+window.addEventListener("mouseup", () => {
+  if (audioDrag) { if (playing) restartPlayback(); audioDrag = null; }
+});
 
 /* ==================== audio (square wave preview) ==================== */
 let AC = null;
@@ -1795,6 +1960,10 @@ function pump() {
     const n = sched.notes[sched.idx++];
     const sec = sched.startTime + secOf(n.onset) - secOf(sched.startBlick);
     scheduleNote(Math.max(ac.currentTime + 0.005, sec), secOf(n.onset + n.dur) - secOf(n.onset), noteFreq(n.p, n.detune));
+  }
+  // 配置音声クリップの先読みスケジュール
+  while (sched.audioIdx < sched.audioList.length && sched.audioList[sched.audioIdx].start < horizon) {
+    scheduleAudioNow(sched.audioList[sched.audioIdx++]);
   }
   // metronome (incremental scheduling)
   if (metroOn) {
@@ -1845,7 +2014,9 @@ function startPlayback() {
   const ac = audioCtx(); if (ac.state === "suspended") ac.resume();
   // playhead は現在のヘッド位置を尊重（一時停止→再開はその位置から）
   lastStartBlick = playhead;
-  sched = { notes: collectPlayNotes(playhead), idx: 0, startTime: ac.currentTime + 0.05, startBlick: playhead, live: [], timer: null };
+  sched = { notes: collectPlayNotes(playhead), idx: 0, startTime: ac.currentTime + 0.05, startBlick: playhead, live: [], timer: null,
+    audioList: [], audioIdx: 0 };
+  initAudioSchedule();
   playing = true;
   ui.playBtn.textContent = "⏸";
   sched.timer = setInterval(pump, 40); pump();
@@ -1855,7 +2026,7 @@ function stopPlayback() {
   if (sched.timer) clearInterval(sched.timer);
   sched.timer = null;
   const ac = AC;
-  if (ac) for (const l of sched.live) { try { l.g.gain.cancelScheduledValues(ac.currentTime); l.g.gain.setValueAtTime(0, ac.currentTime); l.osc.stop(ac.currentTime + 0.01); } catch(e){} }
+  if (ac) for (const l of sched.live) { try { l.g.gain.cancelScheduledValues(ac.currentTime); l.g.gain.setValueAtTime(0, ac.currentTime); if (l.src) l.src.stop(ac.currentTime + 0.01); else l.osc.stop(ac.currentTime + 0.01); } catch(e){} }
   sched.live = [];
   ui.playBtn.textContent = "▶";
   draw();   // 停止＝一時停止: ヘッドはその場に留まる
@@ -1886,8 +2057,10 @@ function confirmDiscardForLoad(newName) {
   if (!project || !dirty) return true;
   return confirm(`編集中の「${fileName}」には未保存の変更があります。\n破棄して「${newName}」を読み込みますか？\n\n「OK」で読み込む / 「キャンセル」で中止`);
 }
+const AUDIO_EXT = /\.(wav|mp3|ogg|m4a|aac|flac|opus)$/i;
 function loadFile(file) {
   if (!file) return;
+  if (AUDIO_EXT.test(file.name)) { loadAudioFile(file); return; } // 音声は配置追加（プロジェクト置換なし）
   if (!confirmDiscardForLoad(file.name)) { setStatus("読み込みをキャンセルしました（編集中の変更を保持）"); return; }
   const ln = file.name.toLowerCase();
   if (ln.endsWith(".mid") || ln.endsWith(".midi")) askMidiBpm(file);
@@ -1930,7 +2103,7 @@ window.addEventListener("dragleave", e => { if (e.target === document.documentEl
 window.addEventListener("drop", e => {
   e.preventDefault(); ui.drop.style.display = "none";
   const f = e.dataTransfer.files[0];
-  if (f && /\.(svp|midi?)$/i.test(f.name)) loadFile(f);
+  if (f && (/\.(svp|midi?)$/i.test(f.name) || AUDIO_EXT.test(f.name))) loadFile(f);
 });
 ui.saveBtn.onclick = () => {
   if (!project) return;
