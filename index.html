@@ -39,6 +39,8 @@
   #trackPane h3 { font-size: 11px; color: #9aa1ad; padding: 2px 6px 6px; font-weight: normal; }
   .trackItem { display: flex; align-items: center; gap: 6px; padding: 5px 8px; margin: 2px 2px;
     border-radius: 6px; cursor: pointer; color: #aab2bf; font-size: 12px; }
+  .trackItem .txt { flex: 1; min-width: 0; }
+  .trackItem .txt > span:first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .trackItem:hover { background: #262a34; }
   .trackItem.active { background: #2e3547; color: #fff; }
   .trackItem .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
@@ -122,8 +124,7 @@
   <button id="openBtn">📁 開く</button>
   <button id="saveBtn" class="primary" disabled>💾 svp書き出し</button>
   <div class="sep"></div>
-  <button id="playBtn" disabled>▶</button>
-  <button id="stopBtn" disabled>■</button>
+  <button id="playBtn" disabled title="再生 / 一時停止 (Space)">▶</button>
   <label>BPM <input id="bpmInput" type="number" step="1" min="20" max="400" disabled></label>
   <label>スナップ
     <select id="snapSel">
@@ -140,7 +141,6 @@
   <button id="phonBtn" disabled title="ノート表示を歌詞⇔音素で切替">表示: 歌詞</button>
   <button id="metroBtn" disabled title="メトロノーム切り替え">🥢 メトロノーム: OFF</button>
   <button id="followBtn" disabled title="再生位置にピアノロール/歌詞ストリップを追従させる (F)">追従: ON</button>
-  <button id="stopModeBtn" disabled title="停止後の再開位置: その場から / 前回の再生開始位置から">■停止: その場で停止</button>
   <span id="status">未読込</span>
   <span id="autosaveTip" style="display:none;color:#6a7280;font-size:10px;" title="編集内容を自動でブラウザに保存しています">・自動保存中</span>
   <input type="file" id="fileInput" accept=".svp,.mid,.midi" style="display:none">
@@ -233,8 +233,8 @@ let hintDemoQ = false;         // boot時に?demo付きで開かれたか（ヒ�
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const $ = id => document.getElementById(id);
-const ui = { openBtn:$("openBtn"), saveBtn:$("saveBtn"), playBtn:$("playBtn"), stopBtn:$("stopBtn"),
-  bpmInput:$("bpmInput"), snapSel:$("snapSel"), phonBtn:$("phonBtn"), metroBtn:$("metroBtn"), followBtn:$("followBtn"), stopModeBtn:$("stopModeBtn"), status:$("status"),
+const ui = { openBtn:$("openBtn"), saveBtn:$("saveBtn"), playBtn:$("playBtn"),
+  bpmInput:$("bpmInput"), snapSel:$("snapSel"), phonBtn:$("phonBtn"), metroBtn:$("metroBtn"), followBtn:$("followBtn"), status:$("status"),
   fileInput:$("fileInput"), hint:$("hint"), drop:$("drop-overlay"),
   trackList: $("trackList"), noteEditor: $("noteEditor"), rowLyric: $("rowLyric"), rowPhon: $("rowPhon"), edLyric: $("edLyric"), edPhon: $("edPhon"),
   edPhonAuto: $("edPhonAuto"), edSplit: $("edSplit"), lyricSplit: $("lyricSplit") };
@@ -378,8 +378,8 @@ function parseProject(json, name, opts = {}) {
   }
   if (!opts.keepHistory) { undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); }
   dirty = false;
-  ui.saveBtn.disabled = ui.playBtn.disabled = ui.stopBtn.disabled = false;
-  ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false; ui.stopModeBtn.disabled = false;
+  ui.saveBtn.disabled = ui.playBtn.disabled = false;
+  ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false;
   ui.hint.style.display = "none";
   return true;
 }
@@ -1364,22 +1364,8 @@ ui.followBtn.onclick = () => {
 };
 function toggleFollow() { ui.followBtn.onclick(); }
 
-/* ==================== stop behavior ==================== */
-// stopMode: "stay" = その場で停止（再開は停止位置から）/ "return" = 再生位置に戻る（再開は前回の開始位置から）
-let stopMode = "stay";
-let lastStartBlick = null;
-function setStopModeText() {
-  ui.stopModeBtn.textContent = "■停止: " + (stopMode === "stay" ? "その場で停止" : "再生位置に戻る");
-}
-function toggleStopMode() {
-  stopMode = stopMode === "stay" ? "return" : "stay";
-  setStopModeText();
-  ui.stopModeBtn.classList.toggle("primary", stopMode === "return");
-  savePrefs();
-  setStatus(stopMode === "stay" ? "停止モード: その場で停止（Space/■とも）" : "停止モード: 再生位置に戻る（Space/■とも）");
-}
-ui.stopModeBtn.onclick = toggleStopMode;
-setStopModeText();
+/* ==================== stop behavior (■停止ボタン廃止: 再生/一時停止で賄う) ==================== */
+let lastStartBlick = null; // シーク操作時に再生開始位置として更新
 
 function clickSound(sec, accent) {
   const ac = audioCtx();
@@ -1468,13 +1454,12 @@ const AUTOSAVE_KEY = "svp-viewer:autosave";
 const PREFS_KEY = "svp-viewer:prefs";
 let lastAutosave = 0;
 function savePrefs() {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ followOn, stopMode })); } catch(e) {}
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ followOn })); } catch(e) {}
 }
 function loadPrefs() {
   try {
     const o = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
     if (typeof o.followOn === "boolean") { followOn = o.followOn; ui.followBtn.textContent = "追従: " + (followOn ? "ON" : "OFF"); ui.followBtn.classList.toggle("primary", followOn); }
-    if (o.stopMode === "stay" || o.stopMode === "return") { stopMode = o.stopMode; setStopModeText(); ui.stopModeBtn.classList.toggle("primary", stopMode === "return"); }
   } catch(e) {}
 }
 function scheduleAutosave() {
@@ -1647,6 +1632,7 @@ function renderTrackPane() {
     const sw = document.createElement("span"); sw.className = "swatch";
     sw.style.background = `hsl(${g.hue},65%,58%)`;
     const txt = document.createElement("span");
+    txt.className = "txt";
     txt.innerHTML = `<span>${escapeHtml(g.name)}${g.inst > 1 ? ` <i>(${g.inst}段)</i>` : ""}</span>` +
       `<span class="sub">${g.notes}ノート${g.mute ? " · mute" : ""}${g.solo ? " · solo" : ""}</span>`;
     const mbtn = document.createElement("button");
@@ -1776,7 +1762,7 @@ function blickAtElapsed(elapsed) {
 function startPlayback() {
   if (playing) return;
   const ac = audioCtx(); if (ac.state === "suspended") ac.resume();
-  // playhead は現在のヘッド位置を尊重（■停止時の stopMode 処理で決定済み）
+  // playhead は現在のヘッド位置を尊重（一時停止→再開はその位置から）
   lastStartBlick = playhead;
   sched = { notes: collectPlayNotes(playhead), idx: 0, startTime: ac.currentTime + 0.05, startBlick: playhead, live: [], timer: null };
   playing = true;
@@ -1810,16 +1796,7 @@ function togglePlay() {
   }
 }
 ui.playBtn.onclick = () => { if (!_toggleLock) togglePlay(); };
-ui.stopBtn.onclick = () => {
-  stopPlayback();
-  // ■: 停止後、stopMode に応じてヘッド位置を決める
-  if (stopMode === "return") {
-    // 「再生位置に戻る」: 停止時にヘッドを再生開始位置へ戻す（次回再生はここから）
-    if (lastStartBlick !== null) playhead = lastStartBlick;
-    else playhead = 0;
-    draw();
-  }
-};  // ■: stopMode stay=その場で停止 / return=再生開始位置に戻る
+;  // ■停止ボタンは廃止（再生/一時停止で賄う）
 
 /* ==================== file io ==================== */
 function loadFile(file) {
@@ -1903,10 +1880,15 @@ function readMidiFile(file, bpm) {
       const midi = parseMidi(r.result);
       const built = midiToProject(midi, bpm, file.name);
       if (parseProject(built.project, built.displayName)) {
-        scrollT = 0; draw();
         activeTrackIdx = rows.length ? rows[0].trackIdx : 0;
         selSet = new Set(); sel = null;
         hideEditor(); renderTrackPane();
+        // キャンバスをレイアウトに再同期してから描画（読込直後の描画抜け対策）
+        resize();
+        // 先頭ノートが画面左寄りに見えるよう横位置を調整（MIDI頭の空白でも表示される）
+        const firstAbs = rows.length ? Math.min(...rows.flatMap(r => r.notes.map(n => n.onset + r.blickOffset))) : 0;
+        scrollT = Math.max(0, firstAbs - px2blick(cv.clientWidth - KEYS_W) * 0.5);
+        draw();
         const cnt = rows.reduce((a, r) => a + r.notes.length, 0);
         setStatus(`${file.name} — MIDI読込: ${built.project.tracks.length}トラック / ${cnt}ノート / BPM ${bpm}`);
       }
