@@ -356,6 +356,7 @@ function parseProject(json, name, opts = {}) {
     if (rows.some(r => r.trackIdx === i)) continue;
     const tr0 = project.tracks[i];
     if (!tr0) continue;
+    if (tr0.mainRef && tr0.mainRef.isInstrumental) continue; // 音声トラックはオーディオ帯担当
     const rf0 = [tr0.mainRef, ...(tr0.groups || [])].filter(Boolean).find(rf => {
       if (rf.groupID && libMap.has(rf.groupID)) return true;
       return !rf.groupID && Array.isArray(tr0.mainGroup && tr0.mainGroup.notes);
@@ -391,7 +392,19 @@ function parseProject(json, name, opts = {}) {
     zoomY = Math.max(0.6, Math.min(2, cv.clientHeight / Math.max(1,(hi-lo+12)) / ROW_H));
     sel = null; selSet = new Set(); playhead = 0;
   }
-  if (!opts.keepHistory) { undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); audioItems = []; }
+  if (!opts.keepHistory) {
+    undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); audioItems = [];
+    // インストゥルメンタル（音声参照）トラックをオーディオ配置として取り込む（実体なし=参照のみ）
+    for (const tr of project.tracks || []) {
+      const mr = tr && tr.mainRef;
+      if (!mr || !mr.isInstrumental || !mr.audio) continue;
+      const fname = mr.audio.filename || "audio";
+      const startB = (mr.blickAbsoluteBegin || 0) + (mr.blickOffset || 0);
+      const durSec = mr.audio.duration || 0;
+      const durB = Math.max(QUARTER / 2, Math.round(durSec * (tempoAtBlick(startB).bpm * QUARTER / 60)));
+      audioItems.push({ id: makeUuid(), name: fname.split("/").pop().split("\\").pop(), filename: fname, buf: null, start: startB, durBlick: durB, durSec });
+    }
+  }
   dirty = false;
   ui.saveBtn.disabled = ui.playBtn.disabled = false;
   ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false; ui.stopModeBtn.disabled = false;
@@ -406,6 +419,7 @@ const px2blick = p => (p / pxPerQuarter) * QUARTER;
 function pitch2y(p) { return cv.height/dpr - (p - scrollP) * ROW_H * zoomY; }
 function y2pitch(y) { return (cv.height/dpr - y) / (ROW_H * zoomY) + scrollP; }
 function snapBlick(b) { if (!snap) return Math.round(b); return Math.round(b / snap) * snap; }
+function tempoAtBlick(b) { const tm = tempoMarks(); let cur = tm.length ? tm[0] : { position: 0, bpm: 120 }; for (const x of tm) { if (x.position <= b) cur = x; else break; } return cur; }
 
 /* ==================== rendering ==================== */
 let dpr = window.devicePixelRatio || 1;
@@ -1783,6 +1797,7 @@ function initAudioSchedule() {
   }
 }
 function scheduleAudioNow(it) {
+  if (!it.buf) return; // 実体のない参照クリップは鳴らせない
   const ac = audioCtx();
   const secFrom = secOf(sched.startBlick);
   const offset = Math.max(0, secFrom - secOf(it.start));
@@ -1808,7 +1823,7 @@ function loadAudioFile(file) {
       let bpm = tmarks.length ? tmarks[0].bpm : 120;
       for (const tm of tmarks) { if (tm.position <= start) bpm = tm.bpm; else break; }
       const durBlick = Math.max(QUARTER / 2, Math.round(buf.duration * (bpm * QUARTER / 60)));
-      audioItems.push({ id: makeUuid(), name: file.name, buf, start, durBlick });
+      audioItems.push({ id: makeUuid(), name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration });
       if (playing) restartPlayback();
       renderTrackPane(); draw();
       setStatus(`音声追加: ${file.name}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
@@ -2105,9 +2120,39 @@ window.addEventListener("drop", e => {
   const f = e.dataTransfer.files[0];
   if (f && (/\.(svp|midi?)$/i.test(f.name) || AUDIO_EXT.test(f.name))) loadFile(f);
 });
+function svpWithAudioTracks() {
+  if (!audioItems.length) return project;
+  const audioTracks = []; const libAdd = [];
+  const existingAudio = new Set((project.tracks || [])
+    .filter(tr => tr.mainRef && tr.mainRef.isInstrumental && tr.mainRef.audio)
+    .map(tr => tr.mainRef.audio.filename));
+  audioItems.filter(it => !existingAudio.has(it.filename || it.name || "audio")).forEach((it, i) => {
+    const base = (it.filename || it.name || "audio").replace(/\.[^.]+$/, "");
+    const startB = Math.round(it.start);
+    const durB = Math.max(QUARTER / 2, Math.round(it.durBlick));
+    const durSec = it.durSec != null ? it.durSec :
+      Math.round((durB / QUARTER) * (60 / (tempoAtBlick(startB).bpm)) * 100) / 100;
+    const gUuid = makeUuid();
+    const tUuid = makeUuid();
+    libAdd.push({ uuid: gUuid, type: "group", name: base, notes: [] });
+    audioTracks.push({
+      name: base, dispColor: "ff4794cb", dispOrder: 1000 + i, renderEnabled: false,
+      mixer: { mute: false, solo: false, gainDecibel: 0, pan: 0 },
+      mainGroup: { uuid: gUuid, name: base },
+      mainRef: { uuid: tUuid, groupID: gUuid, type: "main",
+        blickAbsoluteBegin: startB, blickAbsoluteEnd: -1, blickOffset: 0,
+        pitchOffset: 0, mute: false, isInstrumental: true,
+        audio: { filename: it.filename || it.name || "audio", duration: durSec },
+        database: { name: "", language: "", phoneset: "", languageOverride: "", phonesetOverride: "", backendType: "", version: "-2" },
+        dictionary: "" },
+      groups: [],
+    });
+  });
+  return { ...project, library: [...(project.library || []), ...libAdd], tracks: [...(project.tracks || []), ...audioTracks] };
+}
 ui.saveBtn.onclick = () => {
   if (!project) return;
-  const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(svpWithAudioTracks())], { type: "application/json" });
   const a = document.createElement("a");
   const base = fileName.replace(/\.svp$/i, "");
   a.href = URL.createObjectURL(blob);
