@@ -141,6 +141,7 @@
   <button id="phonBtn" disabled title="ノート表示を歌詞⇔音素で切替">表示: 歌詞</button>
   <button id="metroBtn" disabled title="メトロノーム切り替え">🥢 メトロノーム: OFF</button>
   <button id="followBtn" disabled title="再生位置にピアノロール/歌詞ストリップを追従させる (F)">追従: ON</button>
+  <button id="stopModeBtn" disabled title="停止後の再開位置: その場から / 前回の再生開始位置から">■停止: その場で停止</button>
   <span id="status">未読込</span>
   <span id="autosaveTip" style="display:none;color:#6a7280;font-size:10px;" title="編集内容を自動でブラウザに保存しています">・自動保存中</span>
   <input type="file" id="fileInput" accept=".svp,.mid,.midi" style="display:none">
@@ -234,7 +235,7 @@ const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
 const $ = id => document.getElementById(id);
 const ui = { openBtn:$("openBtn"), saveBtn:$("saveBtn"), playBtn:$("playBtn"),
-  bpmInput:$("bpmInput"), snapSel:$("snapSel"), phonBtn:$("phonBtn"), metroBtn:$("metroBtn"), followBtn:$("followBtn"), status:$("status"),
+  bpmInput:$("bpmInput"), snapSel:$("snapSel"), phonBtn:$("phonBtn"), metroBtn:$("metroBtn"), followBtn:$("followBtn"), stopModeBtn:$("stopModeBtn"), status:$("status"),
   fileInput:$("fileInput"), hint:$("hint"), drop:$("drop-overlay"),
   trackList: $("trackList"), noteEditor: $("noteEditor"), rowLyric: $("rowLyric"), rowPhon: $("rowPhon"), edLyric: $("edLyric"), edPhon: $("edPhon"),
   edPhonAuto: $("edPhonAuto"), edSplit: $("edSplit"), lyricSplit: $("lyricSplit") };
@@ -379,7 +380,7 @@ function parseProject(json, name, opts = {}) {
   if (!opts.keepHistory) { undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); }
   dirty = false;
   ui.saveBtn.disabled = ui.playBtn.disabled = false;
-  ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false;
+  ui.bpmInput.disabled = false; ui.phonBtn.disabled = false; ui.metroBtn.disabled = false; ui.followBtn.disabled = false; ui.stopModeBtn.disabled = false;
   ui.hint.style.display = "none";
   return true;
 }
@@ -733,17 +734,41 @@ cvLyric.addEventListener("dblclick", e => {
   if (h && h.note) {
     selSet = new Set([h.note]);
     sel = { row: h.row, note: h.note };
+    revealNoteInRoll(h.row, h.note);
     draw();
     openEditor("lyric");
   }
 });
+/* ---- 選択ノートをメイン表示域内に収める（歌詞ストリップ→ピアノロール連携） ---- */
+function revealNoteInRoll(row, note) {
+  if (!project || !cv.clientWidth) return;
+  const t = note.onset + row.blickOffset;
+  const viewW = px2blick(cv.clientWidth - KEYS_W);
+  if (t < scrollT) scrollT = Math.max(0, t - px2blick(4));
+  else if (t + note.duration > scrollT + viewW) scrollT = Math.max(0, t - viewW * 0.4); // viewWはblick単位
+  const p = note.pitch + row.pitchOffset;
+  const H = cv.height / dpr;
+  const ROWH = ROW_H * zoomY;
+  // 描画は ruler 分 translate されるため、ノート上端の絶対css y = RULER_H + pitch2y(p) - ROWH
+  const absTop = RULER_H + pitch2y(p) - ROWH;
+  if (absTop < RULER_H) {
+    scrollP += (RULER_H - absTop) / ROWH;                       // 上の方（高音側）へ
+  } else if (absTop + ROWH > H) {
+    scrollP = Math.max(0, scrollP - (absTop + ROWH - H) / ROWH); // 下の方（低音側）へ
+  }
+  draw();
+}
+
 /* ---- タッチ（スマホ）: 歌詞ストリップ ---- */
 let lyrTouch = null;
 cvLyric.addEventListener("touchstart", e => {
   if (!project || e.touches.length !== 1) return;
+  if (pinch) return; // ピンチ中は触らない
   const t = e.touches[0];
   const h = lyricHit({ clientX: t.clientX, clientY: t.clientY });
-  lyrTouch = { x0: t.clientX, y0: t.clientY, h, moved: false, grabRel: null };
+  const rect = cvLyric.getBoundingClientRect();
+  lyrTouch = { x0: t.clientX, y0: t.clientY, startT: scrollT, h,
+    left0: rect.left, moved: false, grabRel: null };
   if (h && h.note) {
     if (!selSet.has(h.note)) selSet = new Set([h.note]);
     sel = { row: h.row, note: h.note };
@@ -756,13 +781,19 @@ cvLyric.addEventListener("touchmove", e => {
   const t = e.touches[0];
   if (Math.abs(t.clientX - lyrTouch.x0) + Math.abs(t.clientY - lyrTouch.y0) > 10) lyrTouch.moved = true;
   const h = lyrTouch.h;
-  if (h && h.note && lyrTouch.moved) {
+  if (!lyrTouch.moved) return;
+  if (h && h.note) {
+    // ノート上ドラッグ = 発音位置を移動
     const rect = cvLyric.getBoundingClientRect();
     const b = scrollT + px2blick(t.clientX - rect.left - KEYS_W);
     const relB = b - h.row.blickOffset;
     if (lyrTouch.grabRel === null) lyrTouch.grabRel = snapBlick(h.b - h.row.blickOffset) - h.note.onset;
     const newOnset = Math.max(0, snapBlick(relB) - lyrTouch.grabRel);
-    if (newOnset !== h.note.onset) { h.note.onset = newOnset; lyrTouch.moved = true; dirty = true; draw(); }
+    if (newOnset !== h.note.onset) { h.note.onset = newOnset; dirty = true; draw(); }
+  } else {
+    // 空きスワイプ = 横スクロール（つまんで動かす）
+    scrollT = Math.max(0, lyrTouch.startT - px2blick(t.clientX - lyrTouch.x0));
+    draw();
   }
 }, { passive: true });
 cvLyric.addEventListener("touchend", e => {
@@ -774,7 +805,7 @@ cvLyric.addEventListener("touchend", e => {
     if (lt.h.note) {
       selSet = new Set([lt.h.note]);
       sel = { row: lt.h.row, note: lt.h.note };
-      draw();
+      revealNoteInRoll(lt.h.row, lt.h.note);
       openEditor("lyric");
     } else {
       playhead = Math.max(0, lt.h.b);
@@ -786,24 +817,62 @@ cvLyric.addEventListener("touchend", e => {
 }, { passive: true });
 cvLyric.addEventListener("touchcancel", () => { lyrTouch = null; });
 
-/* ---- タッチ（スマホ）: ピアノロール（タップ=歌詞編集 / ルーラータップ=シーク） ---- */
+/* ---- タッチ（スマホ）: ピアノロール（1本指=パン&タップ / 2本指ピンチ=ズーム=Ctrl+ホイール相当） ---- */
 let rollTouch = null;
+let pinch = null; // {d0}
+function touchRect() { return cv.getBoundingClientRect(); }
 cv.addEventListener("touchstart", e => {
-  if (!project || e.touches.length !== 1) return;
-  const t = e.touches[0];
-  const rect = cv.getBoundingClientRect();
-  rollTouch = { x0: t.clientX, y0: t.clientY, px: t.clientX - rect.left, py: t.clientY - rect.top, moved: false };
+  if (!project) return;
   hideEditor();
+  if (e.touches.length >= 2) {
+    rollTouch = null;
+    pinch = { d0: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) };
+    return;
+  }
+  if (pinch) return;
+  const t = e.touches[0];
+  const rect = touchRect();
+  rollTouch = { x0: t.clientX, y0: t.clientY, px: t.clientX - rect.left, py: t.clientY - rect.top,
+    startT: scrollT, startP: scrollP, moved: false };
 }, { passive: true });
 cv.addEventListener("touchmove", e => {
+  if (pinch && e.touches.length >= 2) {
+    // ピンチ = 時間ズーム（Ctrl+ホイールと同挙動・指の中心をアンカー）
+    const t1 = e.touches[0], t2 = e.touches[1];
+    const d = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    if (pinch.d0 > 0 && d > 0) {
+      const rect = touchRect();
+      const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const ax = Math.max(0, midX - KEYS_W);
+      const bAt = scrollT + px2blick(ax);
+      pxPerQuarter = Math.max(6, Math.min(600, pxPerQuarter * d / pinch.d0));
+      scrollT = Math.max(0, bAt - px2blick(ax));
+      pinch.d0 = d;
+      draw();
+    }
+    return;
+  }
+  if (pinch) return;
   if (!rollTouch || e.touches.length !== 1) return;
   const t = e.touches[0];
-  if (Math.abs(t.clientX - rollTouch.x0) + Math.abs(t.clientY - rollTouch.y0) > 10) rollTouch.moved = true;
+  const dx = t.clientX - rollTouch.x0, dy = t.clientY - rollTouch.y0;
+  if (Math.abs(dx) + Math.abs(dy) > 10) rollTouch.moved = true;
+  if (!rollTouch.moved) return;
+  // 1本指スワイプ = パン（内容を指に追従させる）
+  scrollT = Math.max(0, rollTouch.startT - px2blick(dx));
+  scrollP = rollTouch.startP + dy / (ROW_H * zoomY);
+  draw();
 }, { passive: true });
 cv.addEventListener("touchend", e => {
+  if (pinch) {
+    if (e.touches.length < 2) pinch = null;
+    rollTouch = null;
+    return;
+  }
   if (!rollTouch) return;
   const rt = rollTouch; rollTouch = null;
-  if (rt.moved || !project) return;
+  if (!project) return;
+  if (rt.moved) return;
   const px = rt.px, py = rt.py;
   if (py < RULER_H && px > KEYS_W) { // ルーラー: シーク
     playhead = Math.max(0, scrollT + px2blick(px - KEYS_W));
@@ -819,7 +888,7 @@ cv.addEventListener("touchend", e => {
     openEditor(editorAnchor);
   }
 }, { passive: true });
-cv.addEventListener("touchcancel", () => { rollTouch = null; });
+cv.addEventListener("touchcancel", () => { rollTouch = null; pinch = null; });
 
 function drawRow(r, t0, t1, viewH, isActive, playingNote, dimSolo) {
   ctx.save();
@@ -1061,12 +1130,8 @@ function commitEditor(advance) {
   if (j === i) { hideEditor(); draw(); return; }
   sel = { row: sel.row, note: sorted[j] };
   selSet = new Set([sel.note]);
-  // Tab移動したノートが表示域に入るようスクロール追従（メイン/歌詞ストリップ共通scrollT）
-  const nx = blick2px(sel.note.onset + sel.row.blickOffset - scrollT);
-  const viewW = cv.clientWidth - KEYS_W;
-  if (nx < 0) scrollT = Math.max(0, sel.note.onset + sel.row.blickOffset - px2blick(4));
-  else if (nx + blick2px(sel.note.duration) > viewW) scrollT = sel.note.onset + sel.row.blickOffset - px2blick(viewW * 0.6);
-  draw();
+  // 次のノートがメインのピアノロール表示域に入るよう追従（時間・音程とも）
+  revealNoteInRoll(sel.row, sel.note);
   openEditor(editorAnchor);   // 歌詞ストリップ起点なら次ノートもストリップ付近に出す
 }
 for (const inp of [ui.edLyric, ui.edPhon]) {
@@ -1364,8 +1429,23 @@ ui.followBtn.onclick = () => {
 };
 function toggleFollow() { ui.followBtn.onclick(); }
 
-/* ==================== stop behavior (■停止ボタン廃止: 再生/一時停止で賄う) ==================== */
+/* ==================== stop behavior ==================== */
+// stopMode: "stay" = その場で停止（Space/再生ボタン停止時はヘッド維持）
+//           "return" = 前回の再生開始位置に戻る（Space停止時に適用）
+let stopMode = "stay";
 let lastStartBlick = null; // シーク操作時に再生開始位置として更新
+function setStopModeText() {
+  ui.stopModeBtn.textContent = "■停止: " + (stopMode === "stay" ? "その場で停止" : "再生位置に戻る");
+}
+function toggleStopMode() {
+  stopMode = stopMode === "stay" ? "return" : "stay";
+  setStopModeText();
+  ui.stopModeBtn.classList.toggle("primary", stopMode === "return");
+  savePrefs();
+  setStatus(stopMode === "stay" ? "停止時: その場で停止（Space停止でヘッド維持）" : "停止時: 前回の再生開始位置に戻る（Space停止時）");
+}
+ui.stopModeBtn.onclick = toggleStopMode;
+setStopModeText();
 
 function clickSound(sec, accent) {
   const ac = audioCtx();
@@ -1454,12 +1534,13 @@ const AUTOSAVE_KEY = "svp-viewer:autosave";
 const PREFS_KEY = "svp-viewer:prefs";
 let lastAutosave = 0;
 function savePrefs() {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ followOn })); } catch(e) {}
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ followOn, stopMode })); } catch(e) {}
 }
 function loadPrefs() {
   try {
     const o = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
     if (typeof o.followOn === "boolean") { followOn = o.followOn; ui.followBtn.textContent = "追従: " + (followOn ? "ON" : "OFF"); ui.followBtn.classList.toggle("primary", followOn); }
+    if (o.stopMode === "stay" || o.stopMode === "return") { stopMode = o.stopMode; setStopModeText(); ui.stopModeBtn.classList.toggle("primary", stopMode === "return"); }
   } catch(e) {}
 }
 function scheduleAutosave() {
@@ -1634,7 +1715,7 @@ function renderTrackPane() {
     const txt = document.createElement("span");
     txt.className = "txt";
     txt.innerHTML = `<span>${escapeHtml(g.name)}${g.inst > 1 ? ` <i>(${g.inst}段)</i>` : ""}</span>` +
-      `<span class="sub">${g.notes}ノート${g.mute ? " · mute" : ""}${g.solo ? " · solo" : ""}</span>`;
+      `<span class="sub">${g.notes}ノート</span>`;
     const mbtn = document.createElement("button");
     mbtn.className = "mbtn" + (g.mute ? " on" : ""); mbtn.textContent = "M"; mbtn.title = "ミュート";
     mbtn.onclick = ev => { ev.stopPropagation(); toggleTrackMute(it.i); };
@@ -1654,7 +1735,7 @@ function renderTrackPane() {
     for (const it of items) {
       const o = document.createElement("option");
       o.value = it.i;
-      o.textContent = `${it.m.name}${it.m.inst > 1 ? ` (${it.m.inst}段)` : ""}${it.m.solo ? " [S]" : ""}${it.m.mute ? " [M]" : ""}`;
+      o.textContent = `${it.m.name}${it.m.inst > 1 ? ` (${it.m.inst}段)` : ""}`;
       if (it.i === activeTrackIdx) o.selected = true;
       sel.appendChild(o);
     }
@@ -1786,17 +1867,18 @@ function togglePlay() {
   if (_toggleLock) return;
   _toggleLock = true;
   setTimeout(() => { _toggleLock = false; }, 120);
-  if (playing) { // pause: keep playhead, keep sched position
+  if (playing) { // stop/pause
     const ac = audioCtx();
     playhead = blickAtElapsed(ac.currentTime - sched.startTime);  // 絶対位置(二重加算なし)
-    stopPlayback();   // 一時停止: ヘッドはその場に
+    if (stopMode === "return" && lastStartBlick !== null) playhead = lastStartBlick; // 「再生位置に戻る」モード
+    stopPlayback();
   } else {
     // 「再生位置で停止 → 再度Space」ならその位置から再開
     startPlayback();
   }
 }
 ui.playBtn.onclick = () => { if (!_toggleLock) togglePlay(); };
-;  // ■停止ボタンは廃止（再生/一時停止で賄う）
+// ■停止ボタン（個別UI）は廃止: 再生/一時停止ボタンが停止も兼ねる
 
 /* ==================== file io ==================== */
 function loadFile(file) {
