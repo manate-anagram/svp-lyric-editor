@@ -13,3 +13,5 @@ testdata/
 
 # Node
 node_modules/
+# manate検証キット（ローカル配布用・非公開）
+testdata/svp_audio_test/
