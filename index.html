@@ -170,6 +170,8 @@
   <input type="file" id="fileInput" accept=".svp,.mid,.midi,.wav,.mp3,.ogg,.m4a,.flac,.aac,.opus" style="display:none">
 </div>
 <div id="mobileBar">
+  <button id="mUndoBtn" title="元に戻す" disabled>↶</button>
+  <button id="mRedoBtn" title="やり直す" disabled>↷</button>
   <button id="mPaneBtn" title="トラック / 音声パネル開閉">☰</button>
   <select id="trackSel" title="トラック切替" disabled></select>
   <button id="mMuteBtn" title="ミュート切替" disabled>M</button>
@@ -256,7 +258,8 @@ let redoStack = [];
 let dirty = false;
 let trackS = [];               // トラックごとのソロ状態（エディタ専用・svpには書かない）
 let hintDemoQ = false;         // boot時に?demo付きで開かれたか（ヒントにデモボタンを出す）
-let audioItems = [];           // 配置音声クリップ（セッション内のみ・svpには書かない）
+let audioItems = [];           // 配置音声クリップ（参照はsvpに書き出す・実体はセッション内のみ）
+const audioBufs = new Map();   // id -> AudioBuffer（undo/redoで復元できるよう実体を保持）
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -275,7 +278,8 @@ const uiM = {
   addTrackBtn: $("addTrackBtn"), delTrackBtn: $("delTrackBtn"),
   trackSel: $("trackSel"), mMuteBtn: $("mMuteBtn"), mSoloBtn: $("mSoloBtn"), mAddBtn: $("mAddBtn"), mDelBtn: $("mDelBtn"),
   midiDlg: $("midiDlg"), midiBpm: $("midiBpmInput"), midiOk: $("midiOkBtn"), midiCancel: $("midiCancelBtn"),
-  mPaneBtn: $("mPaneBtn"), trackPaneClose: $("trackPaneClose")
+  mPaneBtn: $("mPaneBtn"), trackPaneClose: $("trackPaneClose"),
+  mUndoBtn: $("mUndoBtn"), mRedoBtn: $("mRedoBtn")
 };
 
 /* ==================== tempo / meter helpers ==================== */
@@ -408,7 +412,7 @@ function parseProject(json, name, opts = {}) {
     sel = null; selSet = new Set(); playhead = 0;
   }
   if (!opts.keepHistory) {
-    undoStack = []; redoStack = []; trackS = (project.tracks || []).map(() => false); audioItems = [];
+    undoStack = []; redoStack = []; updateUndoBtns(); trackS = (project.tracks || []).map(() => false); audioItems = [];
     // インストゥルメンタル（音声参照）トラックをオーディオ配置として取り込む（実体なし=参照のみ）
     for (const tr of project.tracks || []) {
       const mr = tr && tr.mainRef;
@@ -1197,32 +1201,51 @@ ui.phonBtn.onclick = () => {
 };
 
 /* ==================== editing ==================== */
+// 音声はAudioBufferを持てないので、位置/長さ等のメタだけ履歴化し実体は audioBufs から引き直す
+function audioSnap() {
+  return audioItems.map(it => ({ id: it.id, name: it.name, filename: it.filename, start: it.start,
+    durBlick: it.durBlick, durSec: it.durSec, mute: !!it.mute, solo: !!it.solo }));
+}
+function audioRestore(snap) {
+  if (!Array.isArray(snap)) return; // 音声情報なしの履歴(旧形式)は現状維持
+  audioItems = snap.map(m => ({ ...m, buf: audioBufs.get(m.id) || null }));
+}
+function snapshotState() { return JSON.stringify({ p: project, a: audioSnap() }); }
+function updateUndoBtns() {
+  if (uiM.mUndoBtn) uiM.mUndoBtn.disabled = !undoStack.length;
+  if (uiM.mRedoBtn) uiM.mRedoBtn.disabled = !redoStack.length;
+}
 function pushUndo() {
-  undoStack.push(JSON.stringify(project));
+  undoStack.push(snapshotState());
   if (undoStack.length > 50) undoStack.shift();
   redoStack = [];               // 新編集で redo 履歴は無効化
   dirty = true;
+  updateUndoBtns();
 }
 function undo() {
   if (!undoStack.length) { setStatus("戻せる編集がありません"); return; }
-  redoStack.push(JSON.stringify(project));
+  redoStack.push(snapshotState());
   restoreFrom(JSON.parse(undoStack.pop()));
   setStatus("元に戻しました (Ctrl+Shift+Z でやり直し)");
 }
 function redo() {
   if (!redoStack.length) { setStatus("やり直せる編集がありません"); return; }
-  undoStack.push(JSON.stringify(project));
+  undoStack.push(snapshotState());
   restoreFrom(JSON.parse(redoStack.pop()));
   setStatus("やり直しました");
 }
 function restoreFrom(restored) {
-  project = restored;
+  const snap = (restored && restored.p !== undefined) ? restored : { p: restored, a: null };
+  project = snap.p;
   // re-run the same (track, reference) row-building as parseProject, keeping hues by holder uuid order
   const saved = rows;
   // ビュー状態を退避（undo/redoで表示位置・ズームが飛ばないようにする）
   const v = { scrollT, scrollP, zoomY, pxPerQuarter, playhead };
   const ok = parseProject(project, fileName, { keepHistory: true, keepView: true }); // undo/redo中は履歴を消さない
   if (!ok) { setStatus("undo/redo後の再パースに失敗"); return; }
+  audioRestore(snap.a); // 音声クリップも一緒に戻す/進める
+  renderAudioPane();
+  updateUndoBtns();
   scrollT = v.scrollT; scrollP = v.scrollP; zoomY = v.zoomY; pxPerQuarter = v.pxPerQuarter; playhead = v.playhead;
   const byUuid = new Map();
   for (const o of saved) { const k = o.uuid; if (!byUuid.has(k)) byUuid.set(k, []); byUuid.get(k).push(o); }
@@ -1801,6 +1824,8 @@ function renderTrackPane() {
   }
   renderAudioPane();
 }
+uiM.mUndoBtn.onclick = undo;
+uiM.mRedoBtn.onclick = redo;
 uiM.mPaneBtn.onclick = toggleMobilePane;
 uiM.trackPaneClose.onclick = () => setMobilePane(false);
 uiM.addTrackBtn.onclick = addTrack;
@@ -1818,6 +1843,7 @@ function anySoloActive() { return trackS.some(Boolean) || audioAnySolo(); }
 function audioAudible(it) { return !it.mute && (anySoloActive() ? !!it.solo : true); }
 function toggleAudioMute(id) {
   const it = audioItems.find(a => a.id === id); if (!it) return;
+  pushUndo();
   it.mute = !it.mute;
   if (playing) restartPlayback();
   renderAudioPane(); renderTrackPane(); draw();
@@ -1825,6 +1851,7 @@ function toggleAudioMute(id) {
 }
 function toggleAudioSolo(id) {
   const it = audioItems.find(a => a.id === id); if (!it) return;
+  pushUndo();
   it.solo = !it.solo;
   if (playing) restartPlayback();
   renderAudioPane(); renderTrackPane(); draw();
@@ -1867,7 +1894,10 @@ function loadAudioFile(file) {
       let bpm = tmarks.length ? tmarks[0].bpm : 120;
       for (const tm of tmarks) { if (tm.position <= start) bpm = tm.bpm; else break; }
       const durBlick = Math.max(QUARTER / 2, Math.round(buf.duration * (bpm * QUARTER / 60)));
-      audioItems.push({ id: makeUuid(), name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration, mute: false, solo: false });
+      pushUndo();
+      const id = makeUuid();
+      audioBufs.set(id, buf);
+      audioItems.push({ id, name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration, mute: false, solo: false });
       if (playing) restartPlayback();
       renderTrackPane(); draw();
       setStatus(`音声追加: ${file.name}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
@@ -1878,6 +1908,7 @@ function loadAudioFile(file) {
 function removeAudioItem(id) {
   const i = audioItems.findIndex(x => x.id === id);
   if (i < 0) return;
+  pushUndo(); // 音声削除も元に戻せるように
   audioItems.splice(i, 1);
   if (playing) restartPlayback();
   renderAudioPane(); renderTrackPane(); draw();
@@ -1980,13 +2011,14 @@ cvAudio.addEventListener("mousedown", e => {
   if (!project || e.button !== 0) return;
   const r = cvAudio.getBoundingClientRect();
   const h = audioHitFromXY(e.clientX - r.left);
-  if (h) audioDrag = { it: h.it, mode: h.mode, b0: h.b, start0: h.it.start, dur0: h.it.durBlick };
+  if (h) audioDrag = { it: h.it, mode: h.mode, b0: h.b, start0: h.it.start, dur0: h.it.durBlick, pushed: false };
 });
 window.addEventListener("mousemove", e => {
   if (!audioDrag) return;
   const r = cvAudio.getBoundingClientRect();
   const b = scrollT + px2blick(e.clientX - r.left);
   const db = b - audioDrag.b0;
+  if (!audioDrag.pushed) { pushUndo(); audioDrag.pushed = true; } // ドラッグ開始状態を履歴に
   if (audioDrag.mode === "move") audioDrag.it.start = Math.max(0, audioDrag.start0 + db);
   else audioDrag.it.durBlick = Math.max(QUARTER / 2, audioDrag.dur0 + db);
   draw();
