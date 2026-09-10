@@ -261,6 +261,7 @@ let trackS = [];               // トラックごとのソロ状態（エディ�
 let hintDemoQ = false;         // boot時に?demo付きで開かれたか（ヒントにデモボタンを出す）
 let audioItems = [];           // 配置音声クリップ（参照はsvpに書き出す・実体はセッション内のみ）
 const audioBufs = new Map();   // id -> AudioBuffer（undo/redoで復元できるよう実体を保持）
+let detectedAudio = [];        // 読み込んだsvpに含まれる音声トラック（検出のみ・クリップ表示はしない）
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -441,17 +442,15 @@ function parseProject(json, name, opts = {}) {
   }
   if (!opts.keepHistory) {
     undoStack = []; redoStack = []; updateUndoBtns(); trackS = (project.tracks || []).map(() => false); audioItems = [];
-    // インストゥルメンタル（音声参照）トラックをオーディオ配置として取り込む（実体なし=参照のみ）
+    // 音声（インストゥルメンタル）トラックは「検出のみ」。実体が無い参照クリップを帯に出さない方針（2026-09-10）
+    // ※ 既存の音声トラックは project 側にそのまま保持されるので、書き出しでも消えない
+    detectedAudio = [];
     for (const tr of project.tracks || []) {
       const mr = tr && tr.mainRef;
       if (!mr || !mr.isInstrumental || !mr.audio) continue;
-      const fname = mr.audio.filename || "audio";
-      const startB = (mr.blickAbsoluteBegin || 0) + (mr.blickOffset || 0);
-      const durSec = mr.audio.duration || 0;
-      const durB = durSec > 0 ? Math.max(QUARTER / 2, Math.round(blickOfSec(secOf(startB) + durSec) - startB)) : QUARTER;
-      audioItems.push({ id: makeUuid(), name: fname.split("/").pop().split("\\").pop(), filename: fname, buf: null, start: startB, durBlick: durB, durSec, mute: false, solo: false });
-      layoutAudioStrip();
+      detectedAudio.push({ name: (mr.audio.filename || "audio").split("/").pop().split("\\").pop(), sec: mr.audio.duration || 0 });
     }
+    layoutAudioStrip();
   }
   dirty = false;
   ui.saveBtn.disabled = ui.playBtn.disabled = false;
@@ -2252,7 +2251,7 @@ function readFile(file) {
         selSet = new Set(); sel = null;
         hideEditor(); renderTrackPane();
         const trkN = new Set(rows.map(r => r.trackName)).size;
-        setStatus(`${file.name} — ${trkN}トラック / ${rows.length}インスタンス / ${rows.reduce((a,r)=>a+r.notes.length,0)}ノート / BPM ${tempoMarks()[0].bpm}`);
+        setStatus(`${file.name} — ${trkN}トラック / ${rows.length}インスタンス / ${rows.reduce((a,r)=>a+r.notes.length,0)}ノート / BPM ${tempoMarks()[0].bpm}${detectedAudio.length ? ` / 音声トラック${detectedAudio.length}本あり（${detectedAudio.map(a => a.name).join(", ")}・ビューアでは非表示）` : ""}`);
       }
     } catch (err) { setStatus("読み込みエラー: " + err.message); }
   };
@@ -2279,39 +2278,12 @@ window.addEventListener("drop", e => {
   const f = e.dataTransfer.files[0];
   if (f && (/\.(svp|midi?)$/i.test(f.name) || AUDIO_EXT.test(f.name))) loadFile(f);
 });
-function svpWithAudioTracks() {
-  if (!audioItems.length) return project;
-  const audioTracks = []; const libAdd = [];
-  const existingAudio = new Set((project.tracks || [])
-    .filter(tr => tr.mainRef && tr.mainRef.isInstrumental && tr.mainRef.audio)
-    .map(tr => tr.mainRef.audio.filename));
-  audioItems.filter(it => !existingAudio.has(it.filename || it.name || "audio")).forEach((it, i) => {
-    const base = (it.filename || it.name || "audio").replace(/\.[^.]+$/, "");
-    const startB = Math.round(it.start);
-    const durB = Math.max(QUARTER / 2, Math.round(it.durBlick));
-    const durSec = it.durSec != null ? it.durSec :
-      Math.round((durB / QUARTER) * (60 / (tempoAtBlick(startB).bpm)) * 100) / 100;
-    const gUuid = makeUuid();
-    const tUuid = makeUuid();
-    libAdd.push({ uuid: gUuid, type: "group", name: base, notes: [] });
-    audioTracks.push({
-      name: base, dispColor: "ff4794cb", dispOrder: 1000 + i, renderEnabled: false,
-      mixer: { mute: false, solo: false, gainDecibel: 0, pan: 0 },
-      mainGroup: { uuid: gUuid, name: base },
-      mainRef: { uuid: tUuid, groupID: gUuid, type: "main",
-        blickAbsoluteBegin: startB, blickAbsoluteEnd: -1, blickOffset: 0,
-        pitchOffset: 0, mute: false, isInstrumental: true,
-        audio: { filename: it.filename || it.name || "audio", duration: durSec },
-        database: { name: "", language: "", phoneset: "", languageOverride: "", phonesetOverride: "", backendType: "", version: "-2" },
-        dictionary: "" },
-      groups: [],
-    });
-  });
-  return { ...project, library: [...(project.library || []), ...libAdd], tracks: [...(project.tracks || []), ...audioTracks] };
-}
+// 音声はsvpに書き出さない（2026-09-10 マナテ決定: 音声トラック/参照を出力しない）。
+// 元ファイルに音声トラックがあれば project をそのまま書き出すので失われない。
+function svpOut() { return project; }
 ui.saveBtn.onclick = () => {
   if (!project) return;
-  const blob = new Blob([JSON.stringify(svpWithAudioTracks())], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(svpOut())], { type: "application/json" });
   const a = document.createElement("a");
   const base = fileName.replace(/\.svp$/i, "");
   a.href = URL.createObjectURL(blob);
