@@ -1908,6 +1908,8 @@ function loadAudioFile(file) {
 function removeAudioItem(id) {
   const i = audioItems.findIndex(x => x.id === id);
   if (i < 0) return;
+  const it = audioItems[i];
+  if (!confirm(`音声クリップ「${it.name}」を削除しますか？\n（配置・長さの編集も消えます。Ctrl+Z で戻せます）`)) { setStatus("音声クリップの削除をキャンセルしました"); return; }
   pushUndo(); // 音声削除も元に戻せるように
   audioItems.splice(i, 1);
   if (playing) restartPlayback();
