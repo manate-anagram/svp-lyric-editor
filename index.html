@@ -113,7 +113,7 @@
     #paneResize, #paneToggle { display: none !important; }
     /* trackPane はオーバーレイのドロワー（☰ でトグル） */
     #trackPane { display: none !important; }
-    #trackPane.mobileOpen { display: flex !important; position: absolute; left: 0; top: 0; bottom: 0; z-index: 40;
+    #trackPane.mobileOpen { display: block !important; position: absolute; left: 0; top: 0; bottom: 0; z-index: 40;
       width: min(78vw, 320px) !important; border-right: 1px solid #000; box-shadow: 4px 0 22px #000b; overflow-y: auto; }
     #trackPane.mobileOpen #trackPaneClose { display: inline-block !important; }
     #trackPaneClose { display: none; background: var(--panel2); color: #9aa1ad; border: 1px solid #3a3f4c;
@@ -2278,6 +2278,7 @@ function parseMidi(ab) {
   if (division & 0x8000) throw new Error("SMPTE時間形式のMIDIは未対応（PPQのみ）");
   if (division <= 0) throw new Error("division 不正");
   const trackNames = [];
+  const nameByCh = {}; // ch -> そのトラックの名前（MTrk単位のmeta名をチャンネルへ対応付け）
   const chNotes = {}; // ch -> [{p,start,end}]
   const close = (ch, p, abs) => {
     const arr = chNotes[ch]; if (!arr) return;
@@ -2288,14 +2289,17 @@ function parseMidi(ab) {
   for (let t = 0; t < ntrk; t++) {
     if (str(4) !== "MTrk") { const sl = u32(); off += sl; continue; }
     const len = u32(); const end = off + len;
-    let abs = 0, running = 0;
+    let abs = 0, running = 0, localName = "";
     while (off < end) {
       abs += vlq();
       const b0 = u8();
       if (b0 === 0xff) { // meta
         const mt = u8(); const ml = vlq();
         if (mt === 0x03) {
-          try { const nm = new TextDecoder("utf-8").decode(bytes.subarray(off, off + ml)).trim(); if (nm) trackNames.push(nm); } catch (e) {}
+          try {
+            const nm = new TextDecoder("utf-8").decode(bytes.subarray(off, off + ml)).trim();
+            if (nm) { trackNames.push(nm); if (!localName) localName = nm; }
+          } catch (e) {}
         }
         off += ml; running = 0; continue;
       }
@@ -2309,6 +2313,7 @@ function parseMidi(ab) {
         const d2 = u8();
         if (hi === 0x90 && d2 > 0) {
           if (!chNotes[ch]) chNotes[ch] = [];
+          if (localName && !nameByCh[ch]) nameByCh[ch] = localName;
           chNotes[ch].push({ p: d1, start: abs });
         } else close(ch, d1, abs);
       } else if (hi === 0xc0 || hi === 0xd0) { /* 1バイト系: 無視 */ }
@@ -2328,7 +2333,8 @@ function parseMidi(ab) {
     const notes = chNotes[ch].filter(x => x.end !== undefined && x.end > x.start)
       .map(x => ({ pitch: x.p, start: x.start, dur: x.end - x.start }))
       .sort((a, b) => a.start - b.start);
-    return { name: multi ? `${baseName} ch${+ch + 1}` : baseName, notes };
+    const own = nameByCh[ch];
+    return { name: own || (multi ? `${baseName} ch${+ch + 1}` : baseName), notes };
   }).filter(c => c.notes.length);
   return { ppq: division, chans };
 }
