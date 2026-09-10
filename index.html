@@ -346,7 +346,22 @@ function barLines() { // [{b, meter}]
 /* ==================== svp parse ==================== */
 // Build rows as (track, reference) pairs — one row per instance, track-colored.
 // v2/v3: notes live in library[]; tracks reference them via mainRef/groups[].groupID.
-//   absolute position = ref.blickAbsoluteBegin + ref.blickOffset + note.onset
+//   絶対位置 = note.onset + row.blickOffset（下の groupShiftOf で決める）
+//   SynthV2のボイスグループ: ノートは ref.blickOffset ぶんずらした位置に置かれる
+//   （blickAbsoluteBegin はグループ範囲の開始。両方を足すと二重加算になり2小節ズレる）
+//   ※ 古い形式（範囲が無効/範囲外）では従来どおり begin+offset を使う
+function groupShiftOf(ref, notes) {
+  const off = ref.blickOffset || 0, beg = ref.blickAbsoluteBegin || 0, end = ref.blickAbsoluteEnd;
+  if (notes && notes.length && end != null && end > beg) {
+    let mn = Infinity, mx = -Infinity;
+    for (const n of notes) { const d = n.duration || 0; if (n.onset < mn) mn = n.onset; if (n.onset + d > mx) mx = n.onset + d; }
+    const tol = QUARTER;
+    const fits = s => (mn + s) >= beg - tol && (mx + s) <= end + tol;
+    if (fits(off)) return off;
+    if (fits(off + beg)) return off + beg;
+  }
+  return off + beg;
+}
 // v1: notes directly in tracks[].mainGroup.notes; mainRef still carries offsets.
 function parseProject(json, name, opts = {}) {
   project = json; fileName = name;
@@ -373,7 +388,7 @@ function parseProject(json, name, opts = {}) {
         name: instIdx ? `${baseName} (${instIdx+1})` : baseName,
         trackName: tName, trackIdx,
         uuid: holder.uuid, holder, notes: holder.notes,
-        blickOffset: (ref.blickAbsoluteBegin || 0) + (ref.blickOffset || 0),
+        blickOffset: groupShiftOf(ref, holder.notes),
         pitchOffset: ref.pitchOffset || 0,
         mute: !!ref.mute,
         _ref: ref,
@@ -399,7 +414,7 @@ function parseProject(json, name, opts = {}) {
     rows.push({
       name: tr0.name || `Track ${i+1}`, trackName: tr0.name || `Track ${i+1}`, trackIdx: i,
       uuid: holder0.uuid, holder: holder0, notes: holder0.notes,
-      blickOffset: (rf0.blickAbsoluteBegin || 0) + (rf0.blickOffset || 0),
+      blickOffset: groupShiftOf(rf0, holder0.notes),
       pitchOffset: rf0.pitchOffset || 0,
       mute: !!rf0.mute, _ref: rf0,
       hue: (210 + i * 137.5) % 360,
@@ -1922,10 +1937,12 @@ function loadAudioFile(file) {
       pushUndo();
       const id = makeUuid();
       audioBufs.set(id, buf);
+      const replaced = audioItems.length ? audioItems[0].name : null; // 音声は最大1本（2本目は差し替え）
+      audioItems = [];
       audioItems.push({ id, name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration, mute: false, solo: false });
       if (playing) restartPlayback();
-      layoutAudioStrip(); renderTrackPane(); draw();
-      setStatus(`音声追加: ${file.name}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
+      layoutAudioStrip(); renderAudioPane(); renderTrackPane(); resize(); draw();
+      setStatus(`${replaced ? `音声を差し替え（${replaced} → ${file.name}）` : `音声追加: ${file.name}`}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
     }).catch(() => setStatus("音声デコード失敗（wav / mp3 / ogg 等を試してください）"));
   };
   r.readAsArrayBuffer(file);
