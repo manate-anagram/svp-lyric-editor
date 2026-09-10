@@ -110,7 +110,15 @@
   #mobileBar #trackSel { max-width: 42vw; }
   #mobileBar button:disabled { opacity: .4; }
   @media (max-width: 860px) {
-    #trackPane, #paneResize, #paneToggle { display: none !important; }
+    #paneResize, #paneToggle { display: none !important; }
+    /* trackPane はオーバーレイのドロワー（☰ でトグル） */
+    #trackPane { display: none !important; }
+    #trackPane.mobileOpen { display: flex !important; position: absolute; left: 0; top: 0; bottom: 0; z-index: 40;
+      width: min(78vw, 320px) !important; border-right: 1px solid #000; box-shadow: 4px 0 22px #000b; overflow-y: auto; }
+    #trackPane.mobileOpen #trackPaneClose { display: inline-block !important; }
+    #trackPaneClose { display: none; background: var(--panel2); color: #9aa1ad; border: 1px solid #3a3f4c;
+      border-radius: 5px; padding: 1px 7px; font-size: 13px; cursor: pointer; }
+    #mobileBar #mPaneBtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
     #vResize1, #vResize2 { display: none !important; }
     #mobileBar { display: flex; }
     #miniWrap { height: 30px !important; }
@@ -162,6 +170,7 @@
   <input type="file" id="fileInput" accept=".svp,.mid,.midi,.wav,.mp3,.ogg,.m4a,.flac,.aac,.opus" style="display:none">
 </div>
 <div id="mobileBar">
+  <button id="mPaneBtn" title="トラック / 音声パネル開閉">☰</button>
   <select id="trackSel" title="トラック切替" disabled></select>
   <button id="mMuteBtn" title="ミュート切替" disabled>M</button>
   <button id="mSoloBtn" title="ソロ切替" disabled>S</button>
@@ -173,6 +182,7 @@
     <div id="trackPaneHeader"><h3>TRACKS</h3><div class="tb">
       <button id="addTrackBtn" title="トラックを追加" disabled>＋</button>
       <button id="delTrackBtn" title="アクティブトラックを削除" disabled>🗑</button>
+      <button id="trackPaneClose" title="パネルを閉じる">✕</button>
     </div></div>
     <div id="trackList"></div>
   </div>
@@ -264,7 +274,8 @@ const uiM = {
   hintOpenBtn: $("hintOpenBtn"), hintDemoBtn: $("hintDemoBtn"),
   addTrackBtn: $("addTrackBtn"), delTrackBtn: $("delTrackBtn"),
   trackSel: $("trackSel"), mMuteBtn: $("mMuteBtn"), mSoloBtn: $("mSoloBtn"), mAddBtn: $("mAddBtn"), mDelBtn: $("mDelBtn"),
-  midiDlg: $("midiDlg"), midiBpm: $("midiBpmInput"), midiOk: $("midiOkBtn"), midiCancel: $("midiCancelBtn")
+  midiDlg: $("midiDlg"), midiBpm: $("midiBpmInput"), midiOk: $("midiOkBtn"), midiCancel: $("midiCancelBtn"),
+  mPaneBtn: $("mPaneBtn"), trackPaneClose: $("trackPaneClose")
 };
 
 /* ==================== tempo / meter helpers ==================== */
@@ -1673,10 +1684,19 @@ function trackMeta(i) {
     solo: !!trackS[i],
   };
 }
+function isNarrow() { return window.matchMedia("(max-width: 860px)").matches; }
+function setMobilePane(open) {
+  const pane = document.getElementById("trackPane");
+  if (!pane || !uiM.mPaneBtn) return;
+  pane.classList.toggle("mobileOpen", !!open);
+  uiM.mPaneBtn.classList.toggle("on", !!open);
+}
+function toggleMobilePane() { const pane = document.getElementById("trackPane"); setMobilePane(!(pane && pane.classList.contains("mobileOpen"))); }
 function selectTrack(i) {
   if (i < 0 || (project && i >= project.tracks.length)) return;
   activeTrackIdx = i; selSet = new Set(); sel = null; hideEditor();
   renderTrackPane(); draw();
+  if (isNarrow()) setMobilePane(false); // モバイルでは選択したら閉じる
 }
 function toggleTrackMute(i) {
   if (!project || !project.tracks[i]) return;
@@ -1781,6 +1801,8 @@ function renderTrackPane() {
   }
   renderAudioPane();
 }
+uiM.mPaneBtn.onclick = toggleMobilePane;
+uiM.trackPaneClose.onclick = () => setMobilePane(false);
 uiM.addTrackBtn.onclick = addTrack;
 uiM.delTrackBtn.onclick = deleteTrack;
 uiM.mAddBtn.onclick = addTrack;
