@@ -124,10 +124,11 @@
     #miniWrap { height: 30px !important; }
     #lyricWrap { height: 44% !important; min-height: 110px; }
     #status { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #audioWrap { height: 28px !important; }
+    #audioWrap { min-height: 26px; }
   }
   /* ---- オーディオトラック帯 ---- */
-  #audioWrap { position: relative; height: 44px; flex: none; background: var(--panel); border-bottom: 1px solid #000; }
+  #audioWrap { position: relative; height: 30px; flex: none; background: var(--panel); border-bottom: 1px solid #000;
+    max-height: 40vh; overflow-y: auto; }
   #audioHead { font-size: 10px; color: #9aa1ad; padding: 2px 8px; user-select: none; }
   .audioItem { display: flex; align-items: center; gap: 6px; padding: 3px 8px; margin: 1px 4px;
     border-radius: 5px; background: #252a36; color: #cfe0ff; font-size: 11px; }
@@ -192,7 +193,7 @@
   <div id="rollWrap">
     <div id="miniWrap"><canvas id="cvMini"></canvas></div>
     <div id="vResize1"></div>
-    <div id="audioWrap"><canvas id="cvAudio"></canvas></div>
+    <div id="audioWrap" class="empty"><canvas id="cvAudio"></canvas></div>
     <div id="cvWrap">
       <canvas id="cv"></canvas>
       <div id="hint">
@@ -434,6 +435,7 @@ function parseProject(json, name, opts = {}) {
       const durSec = mr.audio.duration || 0;
       const durB = durSec > 0 ? Math.max(QUARTER / 2, Math.round(blickOfSec(secOf(startB) + durSec) - startB)) : QUARTER;
       audioItems.push({ id: makeUuid(), name: fname.split("/").pop().split("\\").pop(), filename: fname, buf: null, start: startB, durBlick: durB, durSec, mute: false, solo: false });
+      layoutAudioStrip();
     }
   }
   dirty = false;
@@ -467,6 +469,7 @@ function syncBacking() {
 }
 function resize() {
   dpr = window.devicePixelRatio || 1;
+  layoutAudioStrip(); // レーン数に応じた帯の高さ（JS一元管理）
   syncBacking();
   draw();
 }
@@ -623,15 +626,17 @@ function drawMini() {
       ctxMini.fillRect(x, y, w, 3);
     }
   }
-  // audio clips（全体ビューでも音声の位置が分かるよう下部にレーン表示）
+  // audio clips（全体ビューでも音声の位置が分かるよう下部にレーン表示・音声ごとに分割）
   if (audioItems.length) {
-    const laneH = Math.max(3, Math.min(6, H * 0.14));
+    const totalH = Math.max(3, Math.min(10, H * 0.22));
+    const laneH = Math.max(2, totalH / audioItems.length);
     audioItems.forEach((it, idx) => {
       const ax = it.start * px2, aw = Math.max(2, it.durBlick * px2);
+      const ay = H - totalH - 1 + idx * laneH;
       ctxMini.fillStyle = audioAudible(it)
         ? `hsla(${270 + idx * 40}, 55%, 60%, .95)`
         : `hsla(${270 + idx * 40}, 12%, 55%, .35)`;
-      ctxMini.fillRect(ax, H - laneH - 1, aw, laneH);
+      ctxMini.fillRect(ax, ay, aw, Math.max(1, laneH - 0.5));
     });
   }
   // visible window
@@ -1267,7 +1272,7 @@ function restoreFrom(restored) {
   const ok = parseProject(project, fileName, { keepHistory: true, keepView: true }); // undo/redo中は履歴を消さない
   if (!ok) { setStatus("undo/redo後の再パースに失敗"); return; }
   audioRestore(snap.a); // 音声クリップも一緒に戻す/進める
-  renderAudioPane();
+  layoutAudioStrip(); renderAudioPane();
   updateUndoBtns();
   scrollT = v.scrollT; scrollP = v.scrollP; zoomY = v.zoomY; pxPerQuarter = v.pxPerQuarter; playhead = v.playhead;
   const byUuid = new Map();
@@ -1919,7 +1924,7 @@ function loadAudioFile(file) {
       audioBufs.set(id, buf);
       audioItems.push({ id, name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration, mute: false, solo: false });
       if (playing) restartPlayback();
-      renderTrackPane(); draw();
+      layoutAudioStrip(); renderTrackPane(); draw();
       setStatus(`音声追加: ${file.name}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
     }).catch(() => setStatus("音声デコード失敗（wav / mp3 / ogg 等を試してください）"));
   };
@@ -1933,7 +1938,7 @@ function removeAudioItem(id) {
   pushUndo(); // 音声削除も元に戻せるように
   audioItems.splice(i, 1);
   if (playing) restartPlayback();
-  renderAudioPane(); renderTrackPane(); draw();
+  layoutAudioStrip(); renderAudioPane(); renderTrackPane(); resize(); draw();
   setStatus("音声クリップを削除");
 }
 function renderAudioPane() {
@@ -1973,6 +1978,16 @@ function renderAudioPane() {
     box.appendChild(row);
   }
 }
+const AUDIO_LANE_H = 22, AUDIO_LANE_PAD = 3;
+function audioLaneY(idx) { return AUDIO_LANE_PAD + idx * AUDIO_LANE_H; }
+function audioLaneCount() { return audioItems.length; }
+// レーン数に応じて帯の高さを決める（音声が無ければコンパクト）
+function layoutAudioStrip() {
+  const n = audioLaneCount();
+  const h = n ? AUDIO_LANE_PAD * 2 + n * AUDIO_LANE_H : 30;
+  document.getElementById("audioWrap").style.height = h + "px";
+  document.getElementById("audioWrap").classList.toggle("empty", !n);
+}
 function drawAudio() {
   const W = cvAudio.width / dpr, H = cvAudio.height / dpr;
   ctxAudio.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1990,9 +2005,10 @@ function drawAudio() {
     const x = KEYS_W + blick2px(bl.b - t0);
     ctxAudio.beginPath(); ctxAudio.moveTo(x, 0); ctxAudio.lineTo(x, H); ctxAudio.stroke();
   }
-  const y = 5, hh = Math.max(8, H - 10);
+  const hh = AUDIO_LANE_H - 6;
   const audSolo = anySoloActive();
   audioItems.forEach((it, idx) => {
+    const y = audioLaneY(idx) + 3;
     const x = KEYS_W + blick2px(it.start - t0), w = Math.max(4, blick2px(it.durBlick));
     if (x + w < 0 || x > W) return;
     const audible = audioAudible(it);
@@ -2016,11 +2032,16 @@ function drawAudio() {
   }
 }
 let audioDrag = null;
-function audioHitFromXY(cx) {
+function audioHitFromXY(cx, cy) {
   if (!project) return null;
   if (cx < KEYS_W) return null;
   const b = scrollT + px2blick(cx - KEYS_W);
-  for (const it of audioItems) {
+  for (let idx = 0; idx < audioItems.length; idx++) {
+    const it = audioItems[idx];
+    if (cy != null) { // レーン判定（y指定時のみ）
+      const ly = audioLaneY(idx);
+      if (cy < ly || cy > ly + AUDIO_LANE_H) continue;
+    }
     if (b >= it.start && b <= it.start + it.durBlick) {
       const xpx = KEYS_W + blick2px(it.start - scrollT);
       const wpx = blick2px(it.durBlick);
@@ -2031,13 +2052,13 @@ function audioHitFromXY(cx) {
 }
 cvAudio.addEventListener("mousemove", e => {
   const r = cvAudio.getBoundingClientRect();
-  const h = project ? audioHitFromXY(e.clientX - r.left) : null;
+  const h = project ? audioHitFromXY(e.clientX - r.left, e.clientY - r.top) : null;
   cvAudio.style.cursor = audioDrag ? "grabbing" : (h ? (h.mode === "move" ? "move" : "ew-resize") : "default");
 });
 cvAudio.addEventListener("mousedown", e => {
   if (!project || e.button !== 0) return;
   const r = cvAudio.getBoundingClientRect();
-  const h = audioHitFromXY(e.clientX - r.left);
+  const h = audioHitFromXY(e.clientX - r.left, e.clientY - r.top);
   if (h) audioDrag = { it: h.it, mode: h.mode, b0: h.b, start0: h.it.start, dur0: h.it.durBlick, pushed: false };
 });
 window.addEventListener("mousemove", e => {
