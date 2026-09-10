@@ -127,6 +127,10 @@
   .audioItem .du { color: #6a7280; font-size: 10px; }
   .audioItem button { background: none; border: none; color: #6a7280; cursor: pointer; padding: 0 2px; font-size: 12px; }
   .audioItem button:hover { color: #ff5d7a; }
+  .audioItem button.ms { width: 18px; height: 16px; line-height: 14px; text-align: center; border-radius: 3px;
+    font-size: 9px; font-weight: 700; color: #7b8394; background: #1b1f29; padding: 0; }
+  .audioItem button.ms.onM { background: #a8324a; color: #fff; }
+  .audioItem button.ms.onS { background: #2a6fb0; color: #fff; }
   .audioEmpty { color: #565d6b; font-size: 11px; padding: 6px 8px; }
 </style>
 </head>
@@ -402,7 +406,7 @@ function parseProject(json, name, opts = {}) {
       const startB = (mr.blickAbsoluteBegin || 0) + (mr.blickOffset || 0);
       const durSec = mr.audio.duration || 0;
       const durB = Math.max(QUARTER / 2, Math.round(durSec * (tempoAtBlick(startB).bpm * QUARTER / 60)));
-      audioItems.push({ id: makeUuid(), name: fname.split("/").pop().split("\\").pop(), filename: fname, buf: null, start: startB, durBlick: durB, durSec });
+      audioItems.push({ id: makeUuid(), name: fname.split("/").pop().split("\\").pop(), filename: fname, buf: null, start: startB, durBlick: durB, durSec, mute: false, solo: false });
     }
   }
   dirty = false;
@@ -1786,9 +1790,27 @@ uiM.mSoloBtn.onclick = () => toggleTrackSolo(Math.min(activeTrackIdx, Math.max(0
 if (uiM.trackSel) uiM.trackSel.onchange = () => selectTrack(+uiM.trackSel.value);
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
+function audioAnySolo() { return audioItems.some(a => a.solo); }
+function anySoloActive() { return trackS.some(Boolean) || audioAnySolo(); }
+// 音声が鳴るか（ミュート / 何かがソロ中ならソロ対象のみ）
+function audioAudible(it) { return !it.mute && (anySoloActive() ? !!it.solo : true); }
+function toggleAudioMute(id) {
+  const it = audioItems.find(a => a.id === id); if (!it) return;
+  it.mute = !it.mute;
+  if (playing) restartPlayback();
+  renderAudioPane(); renderTrackPane(); draw();
+  setStatus(`音声「${it.name}」: ${it.mute ? "ミュートON" : "ミュート解除"}`);
+}
+function toggleAudioSolo(id) {
+  const it = audioItems.find(a => a.id === id); if (!it) return;
+  it.solo = !it.solo;
+  if (playing) restartPlayback();
+  renderAudioPane(); renderTrackPane(); draw();
+  setStatus(it.solo ? `音声「${it.name}」をソロ（他のトラック/音声はミュート扱い）` : "音声ソロ解除");
+}
 function initAudioSchedule() {
   const fromB = sched.startBlick;
-  const list = audioItems.filter(it => it.start + it.durBlick > fromB).sort((a, b) => a.start - b.start);
+  const list = audioItems.filter(it => audioAudible(it) && it.start + it.durBlick > fromB).sort((a, b) => a.start - b.start);
   sched.audioList = list; sched.audioIdx = 0;
   // 再生開始位置より前に始まっているクリップはオフセット付きで即スケジュール
   while (sched.audioIdx < list.length && list[sched.audioIdx].start <= fromB) {
@@ -1797,7 +1819,7 @@ function initAudioSchedule() {
   }
 }
 function scheduleAudioNow(it) {
-  if (!it.buf) return; // 実体のない参照クリップは鳴らせない
+  if (!it.buf || !audioAudible(it)) return; // 実体なし / ミュート・非ソロ中は鳴らさない
   const ac = audioCtx();
   const secFrom = secOf(sched.startBlick);
   const offset = Math.max(0, secFrom - secOf(it.start));
@@ -1823,7 +1845,7 @@ function loadAudioFile(file) {
       let bpm = tmarks.length ? tmarks[0].bpm : 120;
       for (const tm of tmarks) { if (tm.position <= start) bpm = tm.bpm; else break; }
       const durBlick = Math.max(QUARTER / 2, Math.round(buf.duration * (bpm * QUARTER / 60)));
-      audioItems.push({ id: makeUuid(), name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration });
+      audioItems.push({ id: makeUuid(), name: file.name, filename: file.name, buf, start, durBlick, durSec: buf.duration, mute: false, solo: false });
       if (playing) restartPlayback();
       renderTrackPane(); draw();
       setStatus(`音声追加: ${file.name}（${buf.duration.toFixed(1)}s / ${(durBlick / QUARTER).toFixed(2)}拍 / 開始 ${(start / QUARTER).toFixed(2)}Q ドラッグで移動）`);
@@ -1864,9 +1886,15 @@ function renderAudioPane() {
     const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name;
     const du = document.createElement("span"); du.className = "du";
     du.textContent = (it.durBlick / QUARTER).toFixed(2) + "Q";
+    const mb = document.createElement("button");
+    mb.className = "ms" + (it.mute ? " onM" : ""); mb.textContent = "M"; mb.title = "ミュート";
+    mb.onclick = () => toggleAudioMute(it.id);
+    const sb = document.createElement("button");
+    sb.className = "ms" + (it.solo ? " onS" : ""); sb.textContent = "S"; sb.title = "ソロ";
+    sb.onclick = () => toggleAudioSolo(it.id);
     const rm = document.createElement("button"); rm.textContent = "✕"; rm.title = "この音声を削除";
     rm.onclick = () => removeAudioItem(it.id);
-    row.append(nm, du, rm);
+    row.append(nm, du, mb, sb, rm);
     box.appendChild(row);
   }
 }
@@ -1884,11 +1912,20 @@ function drawAudio() {
     ctxAudio.beginPath(); ctxAudio.moveTo(x, 0); ctxAudio.lineTo(x, H); ctxAudio.stroke();
   }
   const y = 5, hh = Math.max(8, H - 10);
+  const audSolo = anySoloActive();
   audioItems.forEach((it, idx) => {
     const x = blick2px(it.start - t0), w = Math.max(4, blick2px(it.durBlick));
     if (x + w < 0 || x > W) return;
-    ctxAudio.fillStyle = `hsla(${270 + idx * 40}, 55%, 60%, 0.92)`;
+    const audible = audioAudible(it);
+    ctxAudio.fillStyle = audible
+      ? `hsla(${270 + idx * 40}, 55%, 60%, 0.92)`
+      : `hsla(${270 + idx * 40}, 12%, 55%, 0.30)`;
     ctxAudio.beginPath(); ctxAudio.roundRect(x + 1, y, Math.max(4, w - 2), hh, 4); ctxAudio.fill();
+    if (it.solo) {
+      ctxAudio.strokeStyle = "#2a6fb0"; ctxAudio.lineWidth = 1.5;
+      ctxAudio.beginPath(); ctxAudio.roundRect(x + 1, y, Math.max(4, w - 2), hh, 4); ctxAudio.stroke();
+      ctxAudio.lineWidth = 1;
+    }
     ctxAudio.fillStyle = "#0d0f14";
     if (w > 34) ctxAudio.fillText(it.name, x + 5, y + hh / 2 + 4, w - 10);
     else ctxAudio.fillText("♪", x + 4, y + hh / 2 + 4);
@@ -1943,7 +1980,7 @@ function audioCtx() { if (!AC) AC = new (window.AudioContext || window.webkitAud
 function noteFreq(p, detune) { return 440 * Math.pow(2, (p - 69 + (detune||0)/100) / 12); }
 function collectPlayNotes(fromB) {
   const out = [];
-  const soloAny = trackS.some(Boolean);
+  const soloAny = trackS.some(Boolean) || audioItems.some(a => a.solo);
   for (const r of rows) {
     if (soloAny ? !trackS[r.trackIdx] : r.mute) continue;
     for (const n of r.notes) {
